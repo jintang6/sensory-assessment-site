@@ -272,6 +272,7 @@ const cloudToggle = document.getElementById("cloudSyncToggle");
 const consentDialog = document.getElementById("cloudConsentDialog");
 const methodDialog = document.getElementById("methodDialog");
 const shareReportDialog = document.getElementById("shareReportDialog");
+const appHeader = document.querySelector(".app-header");
 
 let records = loadRecords();
 let activeId = null;
@@ -285,6 +286,8 @@ let lastCloudSyncAt = cloudSettings.lastSyncedAt ? new Date(cloudSettings.lastSy
 let lastSyncedSignature = "";
 let preparedReportFile = null;
 let preparedReportLink = null;
+let appHeaderObserver = null;
+let measuredAppHeaderHeight = 0;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -1326,6 +1329,33 @@ function configureRuntimeUi() {
   document.getElementById("printActionLabel").textContent = "发送报告";
 }
 
+function configureFixedHeader() {
+  if (!appHeader) return;
+
+  let framePending = false;
+  const syncHeight = () => {
+    if (framePending) return;
+    framePending = true;
+    requestAnimationFrame(() => {
+      framePending = false;
+      const height = Math.ceil(appHeader.getBoundingClientRect().height);
+      if (!height || height === measuredAppHeaderHeight) return;
+      measuredAppHeaderHeight = height;
+      document.documentElement.style.setProperty("--app-header-height", `${height}px`);
+    });
+  };
+
+  syncHeight();
+  if ("ResizeObserver" in window) {
+    appHeaderObserver = new ResizeObserver(syncHeight);
+    appHeaderObserver.observe(appHeader);
+  } else {
+    window.addEventListener("resize", syncHeight);
+  }
+  window.addEventListener("orientationchange", syncHeight);
+  document.fonts?.ready.then(syncHeight);
+}
+
 function attachEvents() {
   domainList.addEventListener("click", (event) => {
     const button = event.target.closest(".rating-button");
@@ -1449,6 +1479,7 @@ function attachEvents() {
 function init() {
   renderDomains();
   configureRuntimeUi();
+  configureFixedHeader();
   attachEvents();
   refreshCloudUi();
   const transferredRecord = takeTeamRecordTransfer();

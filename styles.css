@@ -26,12 +26,14 @@
   --shadow-tight: 0 5px 16px rgba(24, 39, 51, .08);
   --radius: 8px;
   --font: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --app-header-height: 72px;
 }
 
 html {
   min-height: 100%;
   background: var(--canvas);
   color-scheme: light;
+  scroll-padding-top: calc(var(--app-header-height) + 12px);
 }
 
 body {
@@ -98,17 +100,28 @@ svg {
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 40;
+  z-index: 80;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
   min-height: 72px;
-  padding: 10px max(18px, calc((100vw - 1640px) / 2));
+  padding: calc(10px + env(safe-area-inset-top, 0px)) max(18px, calc((100vw - 1640px) / 2)) 10px;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, .96);
   box-shadow: 0 2px 12px rgba(24, 39, 51, .04);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
+}
+
+.assessment-body {
+  padding-top: var(--app-header-height);
+}
+
+.assessment-body .app-header {
+  position: fixed;
+  right: 0;
+  left: 0;
 }
 
 .brand-block,
@@ -175,6 +188,7 @@ svg {
   font-family: Georgia, "Songti SC", serif;
   font-size: 22px;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .product-label {
@@ -337,10 +351,10 @@ svg {
 .records-column,
 .insights-column {
   position: sticky;
-  top: 120px;
+  top: calc(var(--app-header-height) + 14px);
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 134px);
+  max-height: calc(100vh - var(--app-header-height) - 28px);
   overflow: auto;
   scrollbar-width: thin;
 }
@@ -1944,7 +1958,7 @@ svg {
   }
 
   .insights-column {
-    top: 88px;
+    top: calc(var(--app-header-height) + 14px);
   }
 }
 
@@ -1952,7 +1966,11 @@ svg {
   .app-header {
     position: relative;
     align-items: flex-start;
-    padding: 10px 14px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px));
+  }
+
+  .assessment-body .app-header {
+    position: fixed;
   }
 
   .brand-block p,
@@ -2055,6 +2073,14 @@ svg {
     display: none;
   }
 
+  .header-actions .report-action {
+    min-width: 36px;
+  }
+
+  .header-actions .report-action span {
+    display: none;
+  }
+
   .workspace {
     padding-inline: 7px;
   }
@@ -2138,7 +2164,9 @@ svg {
 }
 
 @media print {
-  body {
+  body,
+  .assessment-body {
+    padding-top: 0;
     background: #fff;
   }
 
