@@ -2,3 +2,4 @@
 .dev.vars*
 .admin-token
 dist/
+node_modules/

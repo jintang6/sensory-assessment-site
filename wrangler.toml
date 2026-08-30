@@ -4,6 +4,7 @@ pages_build_output_dir = "./dist"
 
 [vars]
 ALLOWED_ORIGINS = "https://sensory-assessment-site.pages.dev,https://jintang6.github.io"
+TEAM_NAME = "本校康复评估部门"
 
 [[d1_databases]]
 binding = "DB"

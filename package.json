@@ -1,0 +1,14 @@
+{
+  "name": "sensory-assessment-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "test": "node scripts/test-assessment-engine.mjs && node scripts/test-team-contract.mjs",
+    "test:team": "node scripts/test-team-contract.mjs"
+  },
+  "dependencies": {
+    "better-auth": "1.7.2"
+  }
+}

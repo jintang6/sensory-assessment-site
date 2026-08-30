@@ -24,6 +24,10 @@
     </div>
 
     <nav class="header-actions" aria-label="主要操作">
+      <a class="button quiet admin-link" href="./team.html" title="打开团队工作台">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg>
+        <span>团队工作台</span>
+      </a>
       <a class="button quiet admin-link" href="./admin.html" title="打开数据后台">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg>
         <span>数据后台</span>
@@ -137,7 +141,7 @@
             </label>
             <label class="field">
               <span>学生编号</span>
-              <input id="studentCode" name="studentCode" placeholder="建议用于云端去标识化">
+              <input id="studentCode" name="studentCode" placeholder="协作编号，如 KFB-027">
             </label>
             <label class="field">
               <span>性别</span>
@@ -309,8 +313,8 @@
             <svg viewBox="0 0 24 24"><path d="M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3Zm0 0v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
           </div>
           <div>
-            <h3>云端自动同步</h3>
-            <p id="cloudDescription">自动保存于本机；云同步未启用</p>
+            <h3>团队云备份</h3>
+            <p id="cloudDescription">自动保存于本机；登录团队后可同步</p>
           </div>
           <label class="switch" title="启用或停用云端同步">
             <input id="cloudSyncToggle" type="checkbox">
@@ -424,25 +428,21 @@
     <div class="modal-body">
       <div class="privacy-principles">
         <div><b>访问统计匿名</b><span>不保存IP地址，仅统计会话、时间、页面和设备类别。</span></div>
-        <div><b>自动同步需授权</b><span>启用后，满足条件的评估更改会自动发送到 Cloudflare 数据库。</span></div>
+        <div><b>团队账号与授权</b><span>仅受邀成员登录后可同步和查看本部门记录。</span></div>
         <div><b>本地记录保留</b><span>无论是否同步，当前浏览器仍保存一份可导出的本地记录。</span></div>
       </div>
 
       <fieldset class="sync-mode">
-        <legend>选择同步模式</legend>
+        <legend>固定同步范围</legend>
         <label>
-          <input type="radio" name="syncMode" value="deidentified" checked>
-          <span><b>去标识化同步（推荐）</b><small>不上传姓名、班级、机构、评估人、复核人、背景和医疗注意事项；使用学生编号识别。</small></span>
-        </label>
-        <label>
-          <input type="radio" name="syncMode" value="full">
-          <span><b>完整记录同步</b><small>包括姓名和自由文本，仅适用于已完成机构授权与隐私告知的情形。</small></span>
+          <input type="radio" name="syncMode" value="deidentified" checked disabled>
+          <span><b>团队去标识化同步</b><small>服务端固定排除姓名、班级、机构、评估人、复核人、背景和医疗注意事项；请使用专门的协作编号，不使用学籍号。</small></span>
         </label>
       </fieldset>
 
       <label class="authority-check">
         <input id="consentAuthority" type="checkbox">
-        <span>我确认已取得监护人或机构授权，并有权限将所选范围的评估数据存入云端。</span>
+        <span>我确认已完成本校要求的监护人或机构授权，并不会在协作编号或观察记录中填写可直接识别学生身份的信息。</span>
       </label>
 
       <div class="modal-actions">

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>知衡 · 团队工作台</title>
+  <meta name="description" content="本校康复评估部门的邀请制、去标识化云协作工作台。">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./team.css">
+</head>
+<body class="team-body">
+  <header class="app-header team-header">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true"><span>知</span><i></i></div>
+      <div>
+        <div class="brand-line"><h1>知衡</h1><span class="product-label">团队工作台</span></div>
+        <p id="teamHeaderSubtitle">本校单部门 · 邀请制协作</p>
+      </div>
+    </div>
+    <nav class="header-actions" aria-label="团队工作台操作">
+      <a class="button quiet" href="./index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        返回评估台
+      </a>
+      <button class="icon-button" id="accountBtn" type="button" title="账号与密码" aria-label="账号与密码" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+      </button>
+      <button class="icon-button" id="teamLogoutBtn" type="button" title="退出登录" aria-label="退出登录" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m11-9h6v18h-6"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main class="team-main">
+    <section class="auth-layout" id="authView">
+      <div class="auth-context">
+        <span class="eyebrow">部门内部使用</span>
+        <h1>把评估留在团队里，<br>把身份信息留在本机。</h1>
+        <p>云端只保存学生协作编号、结构化评分和自动分析。姓名、班级、学校、评估人员、背景与医疗注意事项不会进入团队库。</p>
+        <div class="privacy-ledger" aria-label="云协作隐私范围">
+          <div><i class="ledger-dot teal"></i><span><b>邀请制账号</b><small>没有有效邀请链接无法注册</small></span></div>
+          <div><i class="ledger-dot gold"></i><span><b>固定去标识化</b><small>服务端再次删除直接身份字段</small></span></div>
+          <div><i class="ledger-dot blue"></i><span><b>版本与审计</b><small>每次同步保留版本和操作记录</small></span></div>
+        </div>
+      </div>
+
+      <section class="auth-panel" id="loginPanel">
+        <span class="eyebrow">成员登录</span>
+        <h2>进入团队空间</h2>
+        <p>仅限本部门受邀教师、治疗师和授权查看人员。</p>
+        <form id="loginForm">
+          <label class="team-field"><span>工作邮箱</span><input id="loginEmail" type="email" autocomplete="username" required placeholder="name@example.com"></label>
+          <label class="team-field"><span>密码</span><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="至少12个字符"></label>
+          <button class="button primary auth-submit" type="submit">安全登录</button>
+        </form>
+        <div class="form-error" id="loginError" role="alert"></div>
+        <p class="auth-help">新成员请使用管理员发送的专属邀请链接注册。</p>
+      </section>
+
+      <section class="auth-panel" id="registerPanel" hidden>
+        <span class="eyebrow">接受部门邀请</span>
+        <h2>建立协作账号</h2>
+        <div class="invite-summary" id="inviteSummary">正在验证邀请…</div>
+        <form id="registerForm" hidden>
+          <label class="team-field"><span>邀请邮箱</span><input id="registerEmail" type="email" autocomplete="username" required></label>
+          <label class="team-field"><span>姓名或工作称呼</span><input id="registerName" autocomplete="name" maxlength="40" required placeholder="如：王老师"></label>
+          <label class="team-field"><span>设置密码</span><input id="registerPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="至少12个字符"></label>
+          <label class="team-field"><span>确认密码</span><input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="再次输入密码"></label>
+          <label class="registration-confirm"><input id="registerPrivacyConfirm" type="checkbox" required><span>我会使用内部协作编号，不把姓名、学籍号、联系方式等直接身份信息写入云端字段或观察记录。</span></label>
+          <button class="button primary auth-submit" type="submit">接受邀请并注册</button>
+        </form>
+        <div class="form-error" id="registerError" role="alert"></div>
+        <button class="text-button" id="backToLoginBtn" type="button">返回成员登录</button>
+      </section>
+    </section>
+
+    <section class="team-dashboard" id="dashboardView" hidden>
+      <div class="dashboard-topline">
+        <div>
+          <span class="eyebrow">去标识化协作空间</span>
+          <h1 id="teamName">本校康复评估部门</h1>
+          <p><span id="memberGreeting">—</span><span class="role-chip" id="memberRole">—</span></p>
+        </div>
+        <div class="dashboard-actions">
+          <span class="privacy-badge"><i></i>固定去标识化</span>
+          <button class="button quiet" id="refreshTeamBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v6h-6M4 18v-6h6M18.5 9A7 7 0 0 0 6.4 6.4L4 9m16 6-2.4 2.6A7 7 0 0 1 5.5 15"/></svg>
+            刷新
+          </button>
+          <button class="button primary" id="newAssessmentBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            新建评估
+          </button>
+        </div>
+      </div>
+
+      <nav class="team-tabs" id="teamTabs" aria-label="团队工作台页面">
+        <button class="active" type="button" data-team-tab="records">学生档案</button>
+        <button type="button" data-team-tab="members" id="membersTabBtn" hidden>成员与邀请</button>
+        <button type="button" data-team-tab="audit" id="auditTabBtn" hidden>审计记录</button>
+      </nav>
+
+      <section class="team-tab-panel active" data-team-panel="records">
+        <div class="team-metrics" aria-label="团队协作指标">
+          <div class="team-metric accent"><span>云端档案</span><strong id="teamRecordCount">0</strong><small>仅协作编号</small></div>
+          <div class="team-metric"><span>今日更新</span><strong id="teamTodayCount">0</strong><small>新增与修订</small></div>
+          <div class="team-metric"><span>部门成员</span><strong id="teamMemberCount">0</strong><small>启用账号</small></div>
+          <div class="team-metric"><span>近10分钟在线</span><strong id="teamOnlineCount">0</strong><small>活跃成员</small></div>
+        </div>
+
+        <div class="records-layout">
+          <section class="team-panel record-panel">
+            <div class="panel-toolbar">
+              <div><span class="eyebrow">学生协作档案</span><h2>最近评估</h2></div>
+              <label class="team-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                <input id="teamRecordSearch" type="search" placeholder="搜索协作编号或发展需要">
+              </label>
+            </div>
+            <div class="team-table-scroll">
+              <table class="team-table">
+                <thead><tr><th>协作编号</th><th>主要发展需要</th><th>评估日期</th><th>综合分</th><th>完成度</th><th>版本</th><th>最后更新</th><th>操作</th></tr></thead>
+                <tbody id="teamRecordTableBody"></tbody>
+              </table>
+            </div>
+            <div class="team-empty" id="teamRecordEmpty" hidden>团队空间暂无评估档案</div>
+          </section>
+
+          <aside class="team-panel domain-summary">
+            <div class="panel-toolbar compact"><div><span class="eyebrow">团队概况</span><h2>领域平均表现</h2></div><small>分数越低越需关注</small></div>
+            <div id="teamDomainChart" class="team-domain-chart"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="team-tab-panel" data-team-panel="members">
+        <div class="management-grid">
+          <section class="team-panel invite-panel">
+            <div class="panel-toolbar"><div><span class="eyebrow">邀请制成员管理</span><h2>生成专属邀请</h2></div></div>
+            <form class="invite-form" id="inviteForm">
+              <label class="team-field"><span>成员邮箱</span><input id="inviteEmail" type="email" required placeholder="teacher@example.com"></label>
+              <label class="team-field"><span>成员角色</span><select id="inviteRole"><option value="evaluator">评估成员</option><option value="viewer">只读成员</option><option value="admin">部门管理员</option></select></label>
+              <button class="button primary" type="submit">生成邀请链接</button>
+            </form>
+            <div class="invite-result" id="inviteResult" hidden>
+              <label for="inviteLinkOutput">72小时专属邀请链接</label>
+              <div><input id="inviteLinkOutput" readonly><button class="button quiet" id="copyInviteBtn" type="button">复制</button></div>
+              <p id="inviteExpiryText"></p>
+            </div>
+            <div class="form-error" id="inviteError" role="alert"></div>
+          </section>
+
+          <section class="team-panel pending-panel">
+            <div class="panel-toolbar"><div><span class="eyebrow">尚未接受</span><h2>有效邀请</h2></div><span class="count-badge" id="pendingInviteCount">0</span></div>
+            <div class="pending-list" id="pendingInviteList"></div>
+          </section>
+        </div>
+
+        <section class="team-panel members-panel">
+          <div class="panel-toolbar"><div><span class="eyebrow">部门账号</span><h2>成员与权限</h2></div><p>停用账号会立即撤销其现有登录会话。</p></div>
+          <div class="team-table-scroll">
+            <table class="team-table member-table">
+              <thead><tr><th>成员</th><th>邮箱</th><th>角色</th><th>状态</th><th>最近活跃</th><th>操作</th></tr></thead>
+              <tbody id="memberTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="team-tab-panel" data-team-panel="audit">
+        <section class="team-panel audit-panel">
+          <div class="panel-toolbar"><div><span class="eyebrow">近期操作</span><h2>审计记录</h2></div><p>仅保留操作类型、账号、对象和时间，不记录IP地址。</p></div>
+          <div class="audit-list" id="auditList"></div>
+        </section>
+      </section>
+
+      <footer class="team-privacy-footer">
+        <div><strong>云端保存</strong><span>协作编号、功能评分、支持等级、自动分析与版本记录</span></div>
+        <div><strong>云端排除</strong><span>姓名、班级、学校、评估人、背景和医疗注意事项</span></div>
+        <div><strong>最后刷新</strong><span id="teamFreshness">—</span></div>
+      </footer>
+    </section>
+  </main>
+
+  <dialog class="modal team-record-dialog" id="teamRecordDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">去标识化团队档案</span><h2 id="teamRecordDialogTitle">评估详情</h2></div>
+      <button class="icon-button close-team-record" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="modal-body team-record-detail" id="teamRecordDetail"></div>
+    <div class="team-dialog-actions">
+      <button class="button danger" id="deleteTeamRecordBtn" type="button" hidden>移入已删除记录</button>
+      <div>
+        <button class="button quiet" id="exportTeamDocxBtn" type="button">导出 DOCX</button>
+        <button class="button primary" id="openInAssessmentBtn" type="button">在评估台继续</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal account-dialog" id="accountDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">账号安全</span><h2>修改密码</h2></div>
+      <button class="icon-button close-account-dialog" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <form class="modal-body password-form" id="passwordForm">
+      <label class="team-field"><span>当前密码</span><input id="currentPassword" type="password" autocomplete="current-password" required></label>
+      <label class="team-field"><span>新密码</span><input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+      <label class="team-field"><span>确认新密码</span><input id="newPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+      <div class="form-error" id="passwordError" role="alert"></div>
+      <div class="modal-actions"><button class="button quiet close-account-dialog" type="button">取消</button><button class="button primary" type="submit">更新密码</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="teamToast" role="status" aria-live="polite"></div>
+  <script src="./vendor/docx.umd.js"></script>
+  <script type="module" src="./team.js"></script>
+</body>
+</html>

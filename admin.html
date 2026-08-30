@@ -18,6 +18,10 @@
       </div>
     </div>
     <div class="header-actions">
+      <a class="button quiet" href="./team.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg>
+        团队工作台
+      </a>
       <a class="button quiet" href="./index.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
         返回评估台
@@ -77,6 +81,23 @@
         <article class="metric-card">
           <span>今日新增评估</span><strong id="todayAssessments">0</strong><small>按首次同步时间统计</small>
         </article>
+      </section>
+
+      <section class="team-bootstrap-panel" id="teamBootstrapPanel">
+        <div class="team-bootstrap-copy">
+          <span class="eyebrow">邀请制协作初始化</span>
+          <h2>部门团队空间</h2>
+          <p id="teamBootstrapStatus">正在检查团队状态…</p>
+        </div>
+        <form class="team-bootstrap-form" id="teamBootstrapForm">
+          <label class="admin-field"><span>首位部门管理员邮箱</span><input id="bootstrapAdminEmail" type="email" required placeholder="admin@example.com"></label>
+          <button class="button primary" type="submit">生成管理员邀请</button>
+        </form>
+        <div class="bootstrap-result" id="bootstrapResult" hidden>
+          <label for="bootstrapInviteLink">72小时专属邀请链接</label>
+          <div><input id="bootstrapInviteLink" readonly><button class="button quiet" id="copyBootstrapInviteBtn" type="button">复制</button></div>
+          <small>仅可使用一次。请通过部门内部可信渠道发送给首位管理员。</small>
+        </div>
       </section>
 
       <section class="chart-grid">

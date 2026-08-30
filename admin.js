@@ -138,9 +138,59 @@ function renderDashboard() {
   document.getElementById("todayAssessments").textContent = number(metrics.today_assessments);
   document.getElementById("freshnessText").textContent = `最近更新 ${formatDateTime(data.generatedAt)}`;
   document.getElementById("sourceTimestamp").textContent = formatDateTime(data.generatedAt);
+  renderTeamBootstrap(metrics);
   renderTraffic(data.traffic || []);
   renderDomainAverages(data.domainAverages || []);
   renderRecordTable();
+}
+
+function renderTeamBootstrap(metrics) {
+  const memberCount = Number(metrics.team_member_count) || 0;
+  const recordCount = Number(metrics.team_record_count) || 0;
+  const form = document.getElementById("teamBootstrapForm");
+  const result = document.getElementById("bootstrapResult");
+  if (memberCount > 0) {
+    document.getElementById("teamBootstrapStatus").textContent = `团队已建立：${memberCount} 名启用成员、${recordCount} 份去标识化档案。后续邀请请由部门管理员在团队工作台中创建。`;
+    form.hidden = true;
+    result.hidden = true;
+    return;
+  }
+  document.getElementById("teamBootstrapStatus").textContent = "尚未建立团队。请为首位部门管理员生成一次性邀请链接。";
+  form.hidden = false;
+}
+
+async function createBootstrapInvite(event) {
+  event.preventDefault();
+  const submit = event.submitter;
+  const emailInput = document.getElementById("bootstrapAdminEmail");
+  submit.disabled = true;
+  try {
+    const data = await api("/api/admin/team/invites", {
+      method: "POST",
+      body: JSON.stringify({ email: emailInput.value })
+    });
+    document.getElementById("bootstrapInviteLink").value = data.invite.inviteUrl;
+    document.getElementById("bootstrapResult").hidden = false;
+    document.getElementById("teamBootstrapStatus").textContent = `首位管理员邀请已生成，${formatDateTime(data.invite.expiresAt)} 到期。`;
+    showToast("管理员邀请链接已生成。 ");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+async function copyBootstrapInvite() {
+  const value = document.getElementById("bootstrapInviteLink").value;
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    const input = document.getElementById("bootstrapInviteLink");
+    input.select();
+    document.execCommand("copy");
+  }
+  showToast("管理员邀请链接已复制。 ");
 }
 
 function dateKey(date) {
@@ -363,6 +413,8 @@ function attachEvents() {
   document.getElementById("logoutBtn").addEventListener("click", logout);
   document.getElementById("refreshBtn").addEventListener("click", () => refreshDashboard(true));
   document.getElementById("exportCloudBtn").addEventListener("click", exportCloudCsv);
+  document.getElementById("teamBootstrapForm").addEventListener("submit", createBootstrapInvite);
+  document.getElementById("copyBootstrapInviteBtn").addEventListener("click", copyBootstrapInvite);
   document.getElementById("recordSearch").addEventListener("input", renderRecordTable);
   document.getElementById("privacyFilter").addEventListener("change", renderRecordTable);
   document.getElementById("recordTableBody").addEventListener("click", (event) => {
