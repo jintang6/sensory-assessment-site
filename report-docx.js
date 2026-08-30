@@ -9,6 +9,9 @@ const COLORS = {
   teal: "167B72",
   tealDark: "0F5D57",
   tealSoft: "E5F3F0",
+  navy: "294858",
+  gold: "A98748",
+  goldSoft: "F6F1E6",
   blue: "356B8C",
   blueSoft: "E8F0F6",
   line: "D9E1E5",
@@ -37,6 +40,12 @@ function formatDateTime(value) {
 
 function safeFilename(value) {
   return String(value || "未命名学生").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 48);
+}
+
+function reportNumber(row, record) {
+  const date = String(record.assessmentDate || "").replaceAll("-", "") || new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const identity = String(record.studentCode || row?.id || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(-10) || "REPORT";
+  return `ZH-SI-${date}-${identity}`;
 }
 
 export function assessmentReportFilename(row) {
@@ -73,6 +82,8 @@ export function buildAssessmentReportDocument(row, api) {
   const record = row?.assessment || {};
   const analysis = row?.analysis || {};
   const title = row?.student_label || record.studentName || record.studentCode || "评估记录";
+  const organizationName = valueOr(record.organizationName, "知衡特殊教育康复评估");
+  const documentNumber = reportNumber(row, record);
   const privacyMode = Number(row?.is_deidentified) === 1 ? "去标识化记录" : "完整记录";
   const impactLabels = ["无明显影响", "轻度影响", "中度影响", "显著影响"];
   const font = { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_CJK, cs: FONT_CJK };
@@ -105,8 +116,9 @@ export function buildAssessmentReportDocument(row, api) {
   });
 
   const heading = (text) => new Paragraph({
-    children: [run(text, { size: 32, bold: true, color: COLORS.teal })],
-    style: "ReportHeading1"
+    children: [run(text, { size: 29, bold: true, color: COLORS.navy })],
+    style: "ReportHeading1",
+    border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: COLORS.teal } }
   });
 
   const bulletList = (items) => (Array.isArray(items) && items.length ? items : ["暂无"]).map((item) => new Paragraph({
@@ -132,7 +144,7 @@ export function buildAssessmentReportDocument(row, api) {
   });
 
   const metadataRows = [
-    [["学生标识", title], ["学生编号", record.studentCode], ["隐私模式", privacyMode]],
+    [["学生标识", title], ["学生编号", record.studentCode], ["报告编号", documentNumber]],
     [["年龄", record.age], ["性别", record.gender], ["班级", record.className]],
     [["主要发展需要", record.primaryNeed], ["评估人", record.evaluator], ["评估日期", record.assessmentDate]],
     [["主要情境", record.setting], ["综合分", analysis.average == null ? "—" : Number(analysis.average).toFixed(1)], ["完成度", `${Number(analysis.coverage) || 0}%`]],
@@ -144,6 +156,34 @@ export function buildAssessmentReportDocument(row, api) {
 
   const metadataTable = new Table({
     rows: metadataRows,
+    width: { size: REPORT_WIDTH, type: WidthType.DXA },
+    indent: { size: TABLE_INDENT, type: WidthType.DXA },
+    columnWidths: [3120, 3120, 3120],
+    layout: TableLayoutType.FIXED,
+    borders: tableBorders,
+    margins: cellMargins
+  });
+
+  const signatureCell = (label, value) => new TableCell({
+    width: { size: 3120, type: WidthType.DXA },
+    margins: { top: 130, bottom: 130, left: 150, right: 150, marginUnitType: WidthType.DXA },
+    verticalAlign: VerticalAlign.CENTER,
+    children: [
+      new Paragraph({ spacing: { after: 180 }, children: [run(label, { size: 18, bold: true, color: COLORS.faint })] }),
+      new Paragraph({ spacing: { after: 180 }, children: [run(valueOr(value, "________________"), { size: 20, bold: Boolean(value), color: COLORS.ink })] }),
+      new Paragraph({ spacing: { after: 0 }, children: [run("日期：________________", { size: 17, color: COLORS.faint })] })
+    ]
+  });
+
+  const signatureTable = new Table({
+    rows: [new TableRow({
+      cantSplit: true,
+      children: [
+        signatureCell("评估人签名", record.evaluator),
+        signatureCell("复核人签名", record.reviewer),
+        signatureCell("机构盖章", "")
+      ]
+    })],
     width: { size: REPORT_WIDTH, type: WidthType.DXA },
     indent: { size: TABLE_INDENT, type: WidthType.DXA },
     columnWidths: [3120, 3120, 3120],
@@ -217,9 +257,10 @@ export function buildAssessmentReportDocument(row, api) {
     children: [new Paragraph({
       alignment: AlignmentType.LEFT,
       spacing: { after: 0 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 5, color: COLORS.line } },
       children: [
-        run("知衡 · 感觉统合功能评估", { size: 18, bold: true, color: COLORS.teal }),
-        run(`    ${privacyMode}`, { size: 17, color: COLORS.faint })
+        run(organizationName, { size: 18, bold: true, color: COLORS.navy }),
+        run(`    |    ${privacyMode} · 保密文件`, { size: 16, color: COLORS.faint })
       ]
     })]
   });
@@ -229,7 +270,7 @@ export function buildAssessmentReportDocument(row, api) {
       alignment: AlignmentType.RIGHT,
       spacing: { before: 0, after: 0 },
       children: [
-        run("知衡评估报告    第 ", { size: 17, color: COLORS.faint }),
+        run("仅供获授权的教育康复团队使用    第 ", { size: 16, color: COLORS.faint }),
         new TextRun({ children: [PageNumber.CURRENT], font, size: 17, color: COLORS.faint }),
         run(" 页，共 ", { size: 17, color: COLORS.faint }),
         new TextRun({ children: [PageNumber.TOTAL_PAGES], font, size: 17, color: COLORS.faint }),
@@ -240,41 +281,52 @@ export function buildAssessmentReportDocument(row, api) {
 
   const children = [
     new Paragraph({
-      spacing: { before: 0, after: 50 },
-      children: [run("学校与康复场景功能性观察", { size: 19, bold: true, color: COLORS.teal })]
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 80, after: 180 },
+      children: [run(organizationName, { size: 24, bold: true, color: COLORS.navy })]
     }),
     new Paragraph({
       style: "ReportTitle",
-      children: [run(`${title} 感觉统合功能评估报告`, { size: 44, bold: true, color: COLORS.ink })]
+      alignment: AlignmentType.CENTER,
+      children: [run("感觉统合功能评估报告", { size: 46, bold: true, color: COLORS.ink })]
     }),
     new Paragraph({
       style: "ReportSubtitle",
-      children: [run(`评估日期：${valueOr(record.assessmentDate)}    最后同步：${formatDateTime(row?.updated_at)}`, { size: 20, color: COLORS.soft })]
+      alignment: AlignmentType.CENTER,
+      children: [run(`学生标识：${title}    报告编号：${documentNumber}`, { size: 20, color: COLORS.soft })]
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 250 },
+      children: [run(`评估日期：${valueOr(record.assessmentDate)}    报告状态：待专业人员复核`, { size: 18, color: COLORS.faint })]
     }),
     new Paragraph({
       style: "ReportCallout",
-      border: { left: { style: BorderStyle.SINGLE, size: 16, color: COLORS.blue } },
-      shading: { fill: COLORS.blueSoft, type: ShadingType.CLEAR },
-      children: [run("专业说明：本报告由已授权同步的功能性观察数据自动整理，不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。", { size: 20, color: COLORS.blue })]
+      border: { left: { style: BorderStyle.SINGLE, size: 16, color: COLORS.gold } },
+      shading: { fill: COLORS.goldSoft, type: ShadingType.CLEAR },
+      children: [run("报告使用说明：本报告由功能性观察数据自动整理，供教育康复团队制定和复核个别化支持计划使用；不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。", { size: 20, color: COLORS.navy })]
     }),
     metadataTable,
-    heading("一、评估摘要"),
+    heading("一、评估目的与方法"),
+    bodyParagraph(`评估目的：描述${title}在${valueOr(record.setting, "学校与康复情境")}中的感觉调节、感觉运动和活动参与表现，识别相对优势与优先支持需要，并形成可测量的阶段目标。`),
+    bodyParagraph(`资料来源：${Array.isArray(record.observationSources) && record.observationSources.length ? record.observationSources.join("、") : "未记录"}。评分反映学生在当前支持条件下完成可观察任务的程度，并结合参与影响、支持等级与具体观察解释。`),
+    heading("二、评估摘要"),
     bodyParagraph(valueOr(analysis.summary, "尚未形成有效摘要。")),
-    heading("二、个别化分析依据"),
+    heading("三、个别化分析依据"),
     ...bulletList(analysis.basis),
-    heading("三、背景与安全信息"),
+    heading("四、背景与安全信息"),
     bodyParagraph(`主要关切：${valueOr(record.background, "未填写或已去标识化")}`),
     bodyParagraph(`医疗与安全注意事项：${valueOr(record.medicalPrecautions, "未填写或已去标识化")}`),
     ...bulletList(analysis.alerts),
-    heading("四、相对优势"),
+    heading("五、相对优势"),
     ...bulletList(analysis.strengths),
-    heading("五、优先支持需要"),
+    heading("六、优先支持需要"),
     ...bulletList(analysis.needs),
-    heading("六、8周阶段目标"),
+    heading("七、8周阶段目标"),
     ...bulletList(analysis.goals),
-    heading("七、康复、课堂与生活支持"),
+    heading("八、康复、课堂与生活支持"),
     ...bulletList(analysis.strategies),
-    heading("八、领域表现与观察记录"),
+    heading("九、领域表现与观察记录"),
     domainTable,
     new Paragraph({
       style: "ReportNote",
@@ -283,6 +335,14 @@ export function buildAssessmentReportDocument(row, api) {
     new Paragraph({
       style: "ReportNote",
       children: [run(`文档生成时间：${formatDateTime(new Date().toISOString())}`, { size: 18, color: COLORS.faint })]
+    }),
+    heading("十、专业人员确认"),
+    bodyParagraph("评估人与复核人应结合原始观察记录、家庭和教师意见及必要的跨专业资料，对本报告结论与目标进行确认。"),
+    signatureTable,
+    new Paragraph({
+      style: "ReportNote",
+      alignment: AlignmentType.CENTER,
+      children: [run("本报告包含学生教育康复信息，请按照机构隐私制度妥善保管和传递。", { size: 17, color: COLORS.faint })]
     })
   ];
 

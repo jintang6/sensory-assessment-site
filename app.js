@@ -1,4 +1,5 @@
 import { analyzeAssessment, compactAssessmentAnalysis, deidentifyAssessmentRecord } from "./assessment-engine.js";
+import { assessmentReportFilename, buildAssessmentReportDocument } from "./report-docx.js";
 
 const STORAGE_KEY = "sensoryAssessmentRecords.v2";
 const DRAFT_KEY = "sensoryAssessmentDraft.v2";
@@ -8,6 +9,8 @@ const CLOUD_SETTINGS_KEY = "sensoryCloudSettings.v1";
 const AUTO_SAVE_DELAY = 650;
 const AUTO_SYNC_IDLE_DELAY = 4_000;
 const MIN_CLOUD_SYNC_INTERVAL = 15_000;
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const IS_WECHAT = /MicroMessenger/i.test(navigator.userAgent);
 const API_ORIGIN = location.hostname === "sensory-assessment-site.pages.dev" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
   ? ""
   : "https://sensory-assessment-site.pages.dev";
@@ -267,6 +270,7 @@ const searchRecords = document.getElementById("searchRecords");
 const cloudToggle = document.getElementById("cloudSyncToggle");
 const consentDialog = document.getElementById("cloudConsentDialog");
 const methodDialog = document.getElementById("methodDialog");
+const shareReportDialog = document.getElementById("shareReportDialog");
 
 let records = loadRecords();
 let activeId = null;
@@ -275,8 +279,9 @@ let cloudSyncTimer = null;
 let toastTimer = null;
 let cloudSettings = loadCloudSettings();
 let lastAnalysis = null;
-let lastCloudSyncAt = 0;
+let lastCloudSyncAt = cloudSettings.lastSyncedAt ? new Date(cloudSettings.lastSyncedAt).getTime() : 0;
 let lastSyncedSignature = "";
+let preparedReportFile = null;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -346,9 +351,11 @@ function migrateLegacyRecord(record) {
     gender: record.gender || "",
     age: record.age || "",
     className: record.className || "",
+    organizationName: record.organizationName || "",
     primaryNeed: record.primaryNeed === "智力发育迟缓" ? "全面发育迟缓/智力障碍" : (record.primaryNeed || "全面发育迟缓/智力障碍"),
     assessmentDate: record.assessmentDate || today(),
     evaluator: record.evaluator || "",
+    reviewer: record.reviewer || "",
     setting: record.setting || "综合观察",
     cooperation: record.cooperation || "状态波动，需结合多次观察",
     communicationMode: "口语沟通",
@@ -383,8 +390,8 @@ function loadDraft() {
 function loadCloudSettings() {
   const value = readJsonStorage(CLOUD_SETTINGS_KEY, null);
   return value && typeof value === "object"
-    ? { enabled: Boolean(value.enabled), deidentified: value.deidentified !== false, consentAt: value.consentAt || "" }
-    : { enabled: false, deidentified: true, consentAt: "" };
+    ? { enabled: Boolean(value.enabled), deidentified: value.deidentified !== false, consentAt: value.consentAt || "", lastSyncedAt: value.lastSyncedAt || "" }
+    : { enabled: false, deidentified: true, consentAt: "", lastSyncedAt: "" };
 }
 
 function persistCloudSettings() {
@@ -489,9 +496,11 @@ function collectData() {
     gender: form.gender.value,
     age: form.age.value.trim(),
     className: form.className.value.trim(),
+    organizationName: form.organizationName.value.trim(),
     primaryNeed: form.primaryNeed.value,
     assessmentDate: form.assessmentDate.value || today(),
     evaluator: form.evaluator.value.trim(),
+    reviewer: form.reviewer.value.trim(),
     setting: form.setting.value,
     cooperation: form.cooperation.value,
     communicationMode: form.communicationMode.value,
@@ -531,9 +540,11 @@ function applyData(data = {}) {
   setField("gender", data.gender || "");
   setField("age", data.age || "");
   setField("className", data.className || "");
+  setField("organizationName", data.organizationName || "");
   setField("primaryNeed", data.primaryNeed || "全面发育迟缓/智力障碍");
   setField("assessmentDate", data.assessmentDate || today());
   setField("evaluator", data.evaluator || "");
+  setField("reviewer", data.reviewer || "");
   setField("setting", data.setting || "综合观察");
   setField("cooperation", data.cooperation || "资料充分，表现较稳定");
   setField("communicationMode", data.communicationMode || "口语沟通");
@@ -778,6 +789,8 @@ async function syncRecord(data, analysis, { silent = false, signature = syncSign
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "同步失败");
     lastCloudSyncAt = Date.now();
+    cloudSettings.lastSyncedAt = new Date(lastCloudSyncAt).toISOString();
+    persistCloudSettings();
     lastSyncedSignature = signature;
     updateSyncStatus("enabled", `${cloudSettings.deidentified ? "去标识化" : "完整"}记录已自动上传 · ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
     if (!silent) showToast("云端同步完成。 ");
@@ -842,7 +855,7 @@ function csvCell(value) {
 function exportAllCsv() {
   const source = records.length ? records : [collectData()];
   const header = [
-    "姓名", "学生编号", "性别", "年龄", "班级", "主要发展需要", "评估日期", "评估人", "主要情境", "观察来源", "综合分", "完成度", "总体等级",
+    "姓名", "学生编号", "性别", "年龄", "班级", "机构/学校", "主要发展需要", "评估日期", "评估人", "复核人", "主要情境", "观察来源", "综合分", "完成度", "总体等级",
     ...domains.map((domain) => `${domain.title}均分`),
     ...domains.map((domain) => `${domain.title}参与影响`),
     "优势摘要", "支持需要", "阶段目标"
@@ -850,8 +863,8 @@ function exportAllCsv() {
   const rows = source.map((record) => {
     const result = analyze(record);
     return [
-      record.studentName, record.studentCode, record.gender, record.age, record.className, record.primaryNeed,
-      record.assessmentDate, record.evaluator, record.setting, (record.observationSources || []).join("、"),
+      record.studentName, record.studentCode, record.gender, record.age, record.className, record.organizationName, record.primaryNeed,
+      record.assessmentDate, record.evaluator, record.reviewer, record.setting, (record.observationSources || []).join("、"),
       result.average === null ? "" : result.average.toFixed(2), `${result.coverage}%`, result.level,
       ...domains.map((domain) => {
         const row = result.rows.find((item) => item.id === domain.id);
@@ -882,19 +895,21 @@ function buildReportHtml(record) {
   }).join("");
   const list = (items) => `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
   const titleName = record.studentName || record.studentCode || "学生";
+  const organizationName = record.organizationName || "知衡特殊教育康复评估";
+  const htmlReportNumber = `ZH-SI-${String(record.assessmentDate || today()).replaceAll("-", "")}-${String(record.studentCode || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "REPORT"}`;
 
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(titleName)}-感觉统合功能评估报告</title>
   <style>
     body{margin:0;padding:30px;color:#1f2a33;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;font-size:13px;line-height:1.65}
-    header{border-bottom:2px solid #167b72;padding-bottom:14px}h1{margin:0;font-size:25px}header p{margin:5px 0 0;color:#687782}
+    header{text-align:center;border-bottom:2px solid #167b72;padding-bottom:14px}.org{color:#294858;font-weight:800;letter-spacing:0}h1{margin:7px 0 0;font-size:27px}header p{margin:5px 0 0;color:#687782}
     h2{margin:24px 0 9px;font-size:17px;border-bottom:1px solid #dfe5e8;padding-bottom:6px}h3{margin:16px 0 7px;font-size:14px}h3 span{float:right;color:#53616c;font-size:12px;font-weight:500}
     .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;margin:18px 0;padding:13px;border:1px solid #dfe5e8;background:#f8fafb}.meta b{color:#65737d}
     .score{font-size:28px;color:#167b72;font-weight:800}.notice{padding:9px 11px;border-left:4px solid #356b8c;background:#e8f0f6;color:#405f73}
     table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:7px;border:1px solid #dfe5e8;text-align:left;vertical-align:top}th{background:#f3f5f7}.domain-report{break-inside:avoid}
-    ul{margin:7px 0;padding-left:20px}li{margin:4px 0}.foot{margin-top:25px;color:#77838d;font-size:10px}
+    ul{margin:7px 0;padding-left:20px}li{margin:4px 0}.signatures{display:grid;grid-template-columns:repeat(3,1fr);margin-top:22px;border:1px solid #dfe5e8}.signatures div{min-height:80px;padding:12px;border-right:1px solid #dfe5e8}.signatures div:last-child{border-right:0}.foot{margin-top:25px;color:#77838d;font-size:10px}
     @media print{body{padding:0}.domain-report{break-inside:avoid}}
   </style></head><body>
-  <header><h1>${escapeHtml(titleName)} 感觉统合功能评估报告</h1><p>学校场景功能性观察 · ${escapeHtml(record.assessmentDate || today())}</p></header>
+  <header><div class="org">${escapeHtml(organizationName)}</div><h1>感觉统合功能评估报告</h1><p>学生标识：${escapeHtml(titleName)} · 报告编号：${escapeHtml(htmlReportNumber)} · ${escapeHtml(record.assessmentDate || today())}</p></header>
   <p class="notice">本报告由功能性观察数据自动整理，不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。</p>
   <div class="meta">
     <div><b>学生编号：</b>${escapeHtml(record.studentCode || "未填写")}</div><div><b>年龄：</b>${escapeHtml(record.age || "未填写")}</div><div><b>性别：</b>${escapeHtml(record.gender || "未填写")}</div>
@@ -907,14 +922,106 @@ function buildReportHtml(record) {
   <h2>背景、安全与解释</h2><p><b>主要关切：</b>${escapeHtml(record.background || "未填写")}</p><p><b>医疗与安全：</b>${escapeHtml(record.medicalPrecautions || "未填写")}</p>${list(result.alerts)}
   <h2>相对优势</h2>${list(result.strengths)}<h2>优先支持需要</h2>${list(result.needs)}<h2>8周阶段目标</h2>${list(result.goals)}<h2>训练、课堂与生活支持</h2>${list(result.strategies)}
   <h2>领域与项目明细</h2>${domainSections}
+  <h2>专业人员确认</h2><div class="signatures"><div><b>评估人签名</b><br>${escapeHtml(record.evaluator || "")}</div><div><b>复核人签名</b><br>${escapeHtml(record.reviewer || "")}</div><div><b>机构盖章</b></div></div>
   <p class="foot">评分：1全程协助，2大量协助，3部分提示，4少量提示，5独立稳定；每个领域至少完成3项才形成领域分。建议由具备相关专业能力的人员结合多情境观察、家庭优先事项和跨专业资料解释。</p>
   </body></html>`;
 }
 
-function exportReport() {
+function reportRow(data, analysis) {
+  return {
+    student_label: data.studentName || data.studentCode || "学生",
+    is_deidentified: 0,
+    updated_at: data.updatedAt || new Date().toISOString(),
+    assessment: data,
+    analysis
+  };
+}
+
+async function createCurrentDocxFile() {
   const data = collectData();
-  downloadFile(`${safeFilename(data.studentName || data.studentCode)}-感觉统合功能评估报告.html`, buildReportHtml(data), "text/html;charset=utf-8");
-  showToast("已导出 HTML 评估报告。 ");
+  const analysis = analyze(data);
+  if (!data.studentName && !data.studentCode) throw new Error("请先填写学生姓名或编号。");
+  if (analysis.validDomainCount < 3) throw new Error("请至少完成3个有效领域后再生成正式报告。");
+  if (!globalThis.docx?.Packer) throw new Error("Word 报告组件尚未加载，请刷新页面后重试。");
+  const row = reportRow(data, analysis);
+  const filename = assessmentReportFilename(row);
+  const documentFile = buildAssessmentReportDocument(row, globalThis.docx);
+  const blob = await globalThis.docx.Packer.toBlob(documentFile);
+  const file = typeof File === "function"
+    ? new File([blob], filename, { type: DOCX_MIME, lastModified: Date.now() })
+    : blob;
+  return {
+    file,
+    filename
+  };
+}
+
+async function exportDocxReport() {
+  const button = document.getElementById("exportDocxBtn");
+  button.disabled = true;
+  showToast("正在生成正式 Word 评估报告…");
+  try {
+    const { file, filename } = await createCurrentDocxFile();
+    downloadFile(filename, file, DOCX_MIME);
+    showToast("Word 评估报告已导出。 ");
+  } catch (error) {
+    showToast(error.message || "Word 报告生成失败。 ");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function canShareReportFile(file) {
+  try {
+    return Boolean(navigator.share && navigator.canShare?.({ files: [file] }));
+  } catch {
+    return false;
+  }
+}
+
+async function openShareReportDialog() {
+  preparedReportFile = null;
+  document.getElementById("shareReportFilename").textContent = "正在生成报告…";
+  document.getElementById("shareReportStatus").textContent = "正在整理评估结果与正式版式";
+  document.getElementById("shareReportNote").textContent = "报告生成后，可通过系统分享面板选择微信联系人或其他应用。";
+  const sendButton = document.getElementById("sendReportFileBtn");
+  sendButton.disabled = true;
+  sendButton.textContent = "正在生成";
+  shareReportDialog.showModal();
+  try {
+    preparedReportFile = await createCurrentDocxFile();
+    const shareSupported = canShareReportFile(preparedReportFile.file);
+    document.getElementById("shareReportFilename").textContent = preparedReportFile.filename;
+    document.getElementById("shareReportStatus").textContent = "正式版 Word 文档已生成";
+    document.getElementById("shareReportNote").textContent = shareSupported
+      ? "点击下方按钮后，在系统分享面板中选择微信联系人或其他应用。"
+      : "当前微信或浏览器不支持网页直接发送 Word 文件，将先下载报告，再从微信文件中发送给联系人。";
+    sendButton.textContent = shareSupported ? "选择联系人或应用" : "下载 Word 文件";
+    sendButton.disabled = false;
+  } catch (error) {
+    document.getElementById("shareReportFilename").textContent = "报告生成失败";
+    document.getElementById("shareReportStatus").textContent = error.message || "请检查评估资料";
+    document.getElementById("shareReportNote").textContent = "补充所需资料后可重新生成。";
+    sendButton.textContent = "无法发送";
+  }
+}
+
+async function sendPreparedReportFile() {
+  if (!preparedReportFile) return;
+  const { file, filename } = preparedReportFile;
+  if (canShareReportFile(file)) {
+    try {
+      await navigator.share({ files: [file], title: filename, text: "感觉统合功能评估报告" });
+      shareReportDialog.close();
+      showToast("报告已交给系统分享面板。 ");
+      return;
+    } catch (error) {
+      if (error.name === "AbortError") return;
+    }
+  }
+  downloadFile(filename, file, DOCX_MIME);
+  shareReportDialog.close();
+  showToast(IS_WECHAT ? "Word 报告已下载，可从微信文件中发送。 " : "Word 报告已下载。 ");
 }
 
 function printReport() {
@@ -963,16 +1070,36 @@ function updateSyncStatus(state, message) {
   box.querySelector("span").textContent = message;
 }
 
+async function syncNow() {
+  if (!cloudSettings.enabled) {
+    openConsentDialog();
+    return;
+  }
+  const button = document.getElementById("syncNowBtn");
+  button.disabled = true;
+  button.querySelector("span").textContent = "同步中";
+  clearTimeout(cloudSyncTimer);
+  const data = collectData();
+  const saved = saveRecordLocally(data);
+  await syncRecord(saved || data, analyze(saved || data));
+  button.disabled = false;
+  button.querySelector("span").textContent = "立即同步";
+}
+
 function refreshCloudUi() {
   cloudToggle.checked = cloudSettings.enabled;
   const description = document.getElementById("cloudDescription");
+  const syncButtonLabel = document.querySelector("#syncNowBtn span");
   if (!cloudSettings.enabled) {
     description.textContent = "自动保存于本机；云同步未启用";
     updateSyncStatus("", "未启用 · 仅自动保存在本机");
+    syncButtonLabel.textContent = "启用同步";
     return;
   }
   description.textContent = cloudSettings.deidentified ? "已启用去标识化自动同步" : "已启用完整记录自动同步";
-  updateSyncStatus("enabled", `${cloudSettings.deidentified ? "去标识化" : "完整"}同步已启用 · 更改后自动上传`);
+  const lastSync = cloudSettings.lastSyncedAt ? ` · 上次 ${formatDateTime(cloudSettings.lastSyncedAt)}` : " · 等待首次同步";
+  updateSyncStatus("enabled", `${cloudSettings.deidentified ? "去标识化" : "完整"}同步已启用${lastSync}`);
+  syncButtonLabel.textContent = "立即同步";
 }
 
 function openConsentDialog() {
@@ -1010,6 +1137,16 @@ async function sendAnalytics(endpoint) {
   } catch {
     // Anonymous statistics must never block the assessment workflow.
   }
+}
+
+function configureRuntimeUi() {
+  if (!IS_WECHAT) return;
+  document.body.classList.add("wechat-browser");
+  const printButton = document.getElementById("printBtn");
+  printButton.title = "发送 Word 评估报告";
+  printButton.querySelector(".print-action-icon").hidden = true;
+  printButton.querySelector(".share-action-icon").hidden = false;
+  document.getElementById("printActionLabel").textContent = "发送报告";
 }
 
 function attachEvents() {
@@ -1054,10 +1191,12 @@ function attachEvents() {
   searchRecords.addEventListener("input", renderRecords);
   document.getElementById("saveRecordBtn").addEventListener("click", saveCurrentRecord);
   document.getElementById("newRecordBtn").addEventListener("click", newRecord);
-  document.getElementById("printBtn").addEventListener("click", printReport);
+  document.getElementById("printBtn").addEventListener("click", () => IS_WECHAT ? openShareReportDialog() : printReport());
   document.getElementById("exportJsonBtn").addEventListener("click", exportCurrentJson);
   document.getElementById("exportCsvBtn").addEventListener("click", exportAllCsv);
-  document.getElementById("exportReportBtn").addEventListener("click", exportReport);
+  document.getElementById("exportDocxBtn").addEventListener("click", exportDocxReport);
+  document.getElementById("sendReportFileBtn").addEventListener("click", sendPreparedReportFile);
+  document.getElementById("syncNowBtn").addEventListener("click", syncNow);
   document.getElementById("importJsonBtn").addEventListener("click", () => document.getElementById("importJsonInput").click());
   document.getElementById("importJsonInput").addEventListener("change", (event) => {
     const [file] = event.target.files;
@@ -1087,7 +1226,7 @@ function attachEvents() {
   });
   document.getElementById("confirmCloudBtn").addEventListener("click", () => {
     const selected = consentDialog.querySelector('input[name="syncMode"]:checked').value;
-    cloudSettings = { enabled: true, deidentified: selected === "deidentified", consentAt: new Date().toISOString() };
+    cloudSettings = { enabled: true, deidentified: selected === "deidentified", consentAt: new Date().toISOString(), lastSyncedAt: cloudSettings.lastSyncedAt || "" };
     persistCloudSettings();
     consentDialog.close();
     refreshCloudUi();
@@ -1103,6 +1242,9 @@ function attachEvents() {
   });
   consentDialog.addEventListener("click", (event) => {
     if (event.target === consentDialog) consentDialog.close();
+  });
+  shareReportDialog.addEventListener("click", (event) => {
+    if (event.target === shareReportDialog) shareReportDialog.close();
   });
 
   const deleteButton = document.getElementById("deleteRecordBtn");
@@ -1122,6 +1264,7 @@ function attachEvents() {
 
 function init() {
   renderDomains();
+  configureRuntimeUi();
   attachEvents();
   refreshCloudUi();
   const draft = loadDraft();

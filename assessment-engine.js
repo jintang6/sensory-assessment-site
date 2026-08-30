@@ -86,7 +86,9 @@ export function deidentifyAssessmentRecord(data) {
     ...data,
     studentName: "",
     className: "",
+    organizationName: "",
     evaluator: "",
+    reviewer: "",
     background: "",
     medicalPrecautions: "",
     domains: Object.fromEntries(Object.entries(data.domains || {}).map(([id, domain]) => [id, {

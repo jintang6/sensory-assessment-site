@@ -120,9 +120,11 @@ function normalizeRecord(rawRecord, deidentified) {
     gender: cleanString(raw.gender, 20),
     age: cleanString(raw.age, 40),
     className: deidentified ? "" : cleanString(raw.className, 80),
+    organizationName: deidentified ? "" : cleanString(raw.organizationName, 120),
     primaryNeed: cleanString(raw.primaryNeed, 100),
     assessmentDate: cleanDate(raw.assessmentDate),
     evaluator: deidentified ? "" : cleanString(raw.evaluator, 80),
+    reviewer: deidentified ? "" : cleanString(raw.reviewer, 80),
     setting: cleanString(raw.setting, 80),
     cooperation: cleanString(raw.cooperation, 80),
     communicationMode: cleanString(raw.communicationMode, 100),
@@ -426,16 +428,19 @@ async function handleAdminExport(request, env) {
   const result = await env.DB.prepare(`
     SELECT student_label, student_code, is_deidentified, age_text, gender,
            class_name, primary_need, assessment_date, evaluator, setting,
-           overall_score, coverage, created_at, updated_at
+           overall_score, coverage, assessment_json, created_at, updated_at
     FROM assessment_records
     ORDER BY updated_at DESC
   `).all();
-  const header = ["学生标识", "学生编号", "去标识化", "年龄", "性别", "班级", "主要发展需要", "评估日期", "评估人", "情境", "总分", "完成度", "首次同步", "最后更新"];
-  const rows = (result.results || []).map((row) => [
-    row.student_label, row.student_code, row.is_deidentified ? "是" : "否",
-    row.age_text, row.gender, row.class_name, row.primary_need, row.assessment_date,
-    row.evaluator, row.setting, row.overall_score, `${row.coverage}%`, row.created_at, row.updated_at
-  ]);
+  const header = ["学生标识", "学生编号", "去标识化", "年龄", "性别", "班级", "机构/学校", "主要发展需要", "评估日期", "评估人", "复核人", "情境", "总分", "完成度", "首次同步", "最后更新"];
+  const rows = (result.results || []).map((row) => {
+    const assessment = JSON.parse(row.assessment_json || "{}");
+    return [
+      row.student_label, row.student_code, row.is_deidentified ? "是" : "否",
+      row.age_text, row.gender, row.class_name, assessment.organizationName, row.primary_need, row.assessment_date,
+      row.evaluator, assessment.reviewer, row.setting, row.overall_score, `${row.coverage}%`, row.created_at, row.updated_at
+    ];
+  });
   const csv = "\ufeff" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
   return new Response(csv, {
     headers: responseHeaders(request, env, {

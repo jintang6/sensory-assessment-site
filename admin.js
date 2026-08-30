@@ -250,6 +250,7 @@ function renderRecordDetail(row) {
   document.getElementById("recordDetail").innerHTML = `
     <div class="detail-summary">
       <div><span>学生标识</span><strong>${escapeHtml(title)}</strong></div>
+      <div><span>机构/学校</span><strong>${escapeHtml(record.organizationName || "—")}</strong></div>
       <div><span>隐私模式</span><strong>${Number(row.is_deidentified) === 1 ? "去标识化" : "完整记录"}</strong></div>
       <div><span>综合分</span><strong>${analysis.average == null ? "—" : Number(analysis.average).toFixed(1)}</strong></div>
       <div><span>完成度</span><strong>${number(analysis.coverage)}%</strong></div>
@@ -257,6 +258,7 @@ function renderRecordDetail(row) {
       <div><span>评估日期</span><strong>${escapeHtml(record.assessmentDate || "—")}</strong></div>
       <div><span>主要情境</span><strong>${escapeHtml(record.setting || "—")}</strong></div>
       <div><span>主要发展需要</span><strong>${escapeHtml(record.primaryNeed || "—")}</strong></div>
+      <div><span>报告复核人</span><strong>${escapeHtml(record.reviewer || "—")}</strong></div>
       <div><span>最后同步</span><strong>${formatDateTime(row.updated_at)}</strong></div>
     </div>
     <section class="detail-section"><h3>总体摘要</h3><p>${escapeHtml(analysis.summary || "暂无")}</p></section>

@@ -36,8 +36,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4Zm4 0v6h7V4M8 20v-7h8v7"/></svg>
         <span>立即保存</span>
       </button>
-      <button class="icon-button" id="printBtn" type="button" title="打印报告" aria-label="打印报告">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z"/></svg>
+      <button class="button quiet report-action" id="printBtn" type="button" title="打印报告">
+        <svg class="print-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z"/></svg>
+        <svg class="share-action-icon" viewBox="0 0 24 24" aria-hidden="true" hidden><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
+        <span id="printActionLabel">打印</span>
       </button>
     </nav>
   </header>
@@ -88,7 +90,10 @@
           </button>
           <button class="tool-button" id="exportJsonBtn" type="button">JSON</button>
           <button class="tool-button" id="exportCsvBtn" type="button">CSV</button>
-          <button class="tool-button" id="exportReportBtn" type="button">评估报告</button>
+          <button class="tool-button" id="exportDocxBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+            Word 报告
+          </button>
         </div>
         <input class="visually-hidden" id="importJsonInput" type="file" accept="application/json,.json">
       </section>
@@ -152,6 +157,10 @@
               <input id="className" name="className" placeholder="如：康复三班">
             </label>
             <label class="field">
+              <span>机构/学校名称</span>
+              <input id="organizationName" name="organizationName" placeholder="用于正式报告抬头">
+            </label>
+            <label class="field">
               <span>主要发展需要</span>
               <select id="primaryNeed" name="primaryNeed">
                 <option>全面发育迟缓/智力障碍</option>
@@ -169,6 +178,10 @@
             <label class="field">
               <span>评估人</span>
               <input id="evaluator" name="evaluator" placeholder="治疗师/教师">
+            </label>
+            <label class="field">
+              <span>报告复核人</span>
+              <input id="reviewer" name="reviewer" placeholder="选填，用于报告签字栏">
             </label>
             <label class="field">
               <span>主要情境</span>
@@ -307,7 +320,13 @@
         <div class="sync-status" id="syncStatus">
           <i></i><span>未启用 · 仅自动保存在本机</span>
         </div>
-        <button class="text-button manage-privacy" id="privacyManageBtn" type="button">隐私与同步设置</button>
+        <div class="cloud-actions">
+          <button class="text-button manage-privacy" id="privacyManageBtn" type="button">隐私与同步设置</button>
+          <button class="sync-now-button" id="syncNowBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M5 20h14"/></svg>
+            <span>启用同步</span>
+          </button>
+        </div>
       </section>
 
       <section class="insight-section result-section">
@@ -413,7 +432,7 @@
         <legend>选择同步模式</legend>
         <label>
           <input type="radio" name="syncMode" value="deidentified" checked>
-          <span><b>去标识化同步（推荐）</b><small>不上传姓名、班级、评估人、背景和医疗注意事项；使用学生编号识别。</small></span>
+          <span><b>去标识化同步（推荐）</b><small>不上传姓名、班级、机构、评估人、复核人、背景和医疗注意事项；使用学生编号识别。</small></span>
         </label>
         <label>
           <input type="radio" name="syncMode" value="full">
@@ -433,8 +452,32 @@
     </div>
   </dialog>
 
+  <dialog class="modal share-report-dialog" id="shareReportDialog">
+    <div class="modal-head">
+      <div>
+        <span class="eyebrow">微信与移动端</span>
+        <h2>发送 Word 评估报告</h2>
+      </div>
+      <button class="icon-button close-dialog" type="button" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body share-report-body">
+      <div class="share-file-preview">
+        <div class="word-file-icon" aria-hidden="true">W</div>
+        <div><strong id="shareReportFilename">正在生成报告…</strong><span id="shareReportStatus">正在整理评估结果与正式版式</span></div>
+      </div>
+      <p class="share-report-note" id="shareReportNote">报告生成后，可通过系统分享面板选择微信联系人或其他应用。</p>
+      <div class="modal-actions">
+        <button class="button quiet close-dialog" type="button">取消</button>
+        <button class="button primary" id="sendReportFileBtn" type="button" disabled>正在生成</button>
+      </div>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="./vendor/docx.umd.js"></script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

@@ -24,6 +24,8 @@ const scoreLevels = {
 const data = {
   studentName: "测试学生",
   studentCode: "T001",
+  organizationName: "测试学校",
+  reviewer: "测试复核人",
   primaryNeed: "全面发育迟缓/智力障碍",
   setting: "课堂",
   cooperation: "资料充分，表现较稳定",
@@ -78,6 +80,8 @@ const deidentifiedResult = analyzeAssessment(deidentifiedRecord, {
 });
 const cloudAnalysis = compactAssessmentAnalysis(deidentifiedResult);
 assert.equal(deidentifiedRecord.studentName, "");
+assert.equal(deidentifiedRecord.organizationName, "");
+assert.equal(deidentifiedRecord.reviewer, "");
 assert.equal(deidentifiedRecord.background, "");
 assert.equal(deidentifiedRecord.medicalPrecautions, "");
 assert.match(deidentifiedRecord.domains.regulation.note, /^该学生/);

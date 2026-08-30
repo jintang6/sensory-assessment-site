@@ -205,7 +205,8 @@ svg {
 .rating-button,
 .record-item,
 .domain-summary,
-.link-button {
+.link-button,
+.sync-now-button {
   cursor: pointer;
 }
 
@@ -276,6 +277,10 @@ svg {
   border-radius: 7px;
   background: var(--surface);
   color: var(--ink-soft);
+}
+
+.report-action {
+  min-width: 82px;
 }
 
 .method-strip {
@@ -1352,8 +1357,46 @@ svg {
   background: var(--coral);
 }
 
-.manage-privacy {
-  margin-top: 8px;
+.cloud-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 9px;
+}
+
+.sync-now-button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid #afd3ce;
+  border-radius: 5px;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.sync-now-button:hover {
+  border-color: #77b9b0;
+  background: #dcefeb;
+}
+
+.sync-now-button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.sync-now-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .result-section {
@@ -1708,7 +1751,63 @@ svg {
   margin-top: 16px;
 }
 
-.button:disabled {
+.share-report-dialog {
+  width: min(520px, calc(100vw - 28px));
+}
+
+.share-report-body {
+  display: grid;
+  gap: 14px;
+}
+
+.share-file-preview {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+}
+
+.word-file-icon {
+  display: grid;
+  width: 46px;
+  height: 54px;
+  place-items: center;
+  border-radius: 5px;
+  background: #245aa5;
+  color: #fff;
+  font-size: 21px;
+  font-weight: 850;
+}
+
+.share-file-preview strong,
+.share-file-preview span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.share-file-preview strong {
+  font-size: 12px;
+}
+
+.share-file-preview span {
+  margin-top: 4px;
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.share-report-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.button:disabled,
+.tool-button:disabled {
   cursor: not-allowed;
   opacity: .48;
   box-shadow: none;
@@ -1786,6 +1885,14 @@ svg {
 
   .header-actions {
     flex-wrap: wrap;
+  }
+
+  .wechat-browser .report-action {
+    min-width: auto;
+  }
+
+  .wechat-browser .report-action span {
+    display: inline;
   }
 
   .method-inner {
