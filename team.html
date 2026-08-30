@@ -106,14 +106,18 @@
         <div class="team-metrics" aria-label="学生名单指标">
           <div class="team-metric accent"><span>在册学生</span><strong id="teamStudentCount">0</strong><small>当前授权名单</small></div>
           <div class="team-metric"><span>已有评估</span><strong id="teamAssessedStudentCount">0</strong><small>至少保存1次</small></div>
-          <div class="team-metric"><span>待开始评估</span><strong id="teamPendingStudentCount">0</strong><small>尚无团队记录</small></div>
-          <div class="team-metric"><span>班级</span><strong id="teamClassCount">0</strong><small>当前在册班级</small></div>
+          <div class="team-metric"><span>执行中目标</span><strong id="teamActiveGoalCount">0</strong><small>全体学生阶段目标</small></div>
+          <div class="team-metric"><span>待复核提醒</span><strong id="teamDueGoalCount">0</strong><small>逾期或7日内到期</small></div>
         </div>
 
         <section class="team-panel roster-panel">
           <div class="panel-toolbar">
-            <div><span class="eyebrow">本校授权名单</span><h2>学生与评估进度</h2></div>
+            <div><span class="eyebrow">本校授权名单</span><h2>学生与康复进度</h2></div>
             <div class="roster-toolbar-actions">
+              <button class="button quiet" id="addTeamStudentBtn" type="button" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                新增学生
+              </button>
               <label class="team-search">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
                 <input id="teamRosterSearch" type="search" placeholder="搜索姓名、班级或协作编号">
@@ -124,7 +128,7 @@
           </div>
           <div class="team-table-scroll">
             <table class="team-table roster-table">
-              <thead><tr><th>姓名</th><th>班级</th><th>协作编号</th><th>评估状态</th><th>最近评估</th><th>操作</th></tr></thead>
+              <thead><tr><th>姓名</th><th>班级</th><th>协作编号</th><th>评估状态</th><th>康复目标</th><th>最近干预</th><th>操作</th></tr></thead>
               <tbody id="teamRosterTableBody"></tbody>
             </table>
           </div>
@@ -227,6 +231,143 @@
         <button class="button primary" id="openInAssessmentBtn" type="button">在评估台继续</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="modal student-profile-dialog" id="studentProfileDialog">
+    <div class="modal-head student-profile-head">
+      <div><span class="eyebrow" id="studentProfileCode">学生康复档案</span><h2 id="studentProfileTitle">学生主页</h2><p id="studentProfileSubtitle">—</p></div>
+      <button class="icon-button close-student-profile" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="modal-body student-profile-body">
+      <div class="profile-metrics" aria-label="学生康复指标">
+        <div><span>最近综合分</span><strong id="profileLatestScore">—</strong><small id="profileLatestDate">尚无评估</small></div>
+        <div><span>评估次数</span><strong id="profileAssessmentCount">0</strong><small>含历次复评</small></div>
+        <div><span>执行中目标</span><strong id="profileActiveGoalCount">0</strong><small>当前阶段</small></div>
+        <div><span>待复核</span><strong id="profileDueGoalCount">0</strong><small>逾期或7日内到期</small></div>
+      </div>
+
+      <nav class="profile-tabs" id="studentProfileTabs" aria-label="学生康复档案页面">
+        <button class="active" type="button" data-profile-tab="overview">概览</button>
+        <button type="button" data-profile-tab="goals">康复目标</button>
+        <button type="button" data-profile-tab="interventions">干预记录</button>
+        <button type="button" data-profile-tab="assessments">评估历史</button>
+      </nav>
+
+      <section class="profile-tab-panel active" data-profile-panel="overview">
+        <div class="profile-overview-grid">
+          <section class="profile-section trend-section">
+            <div class="profile-section-head"><div><span>复评变化</span><h3>综合表现趋势</h3></div><small>1至5分，分数越高表示独立稳定程度越高</small></div>
+            <div class="profile-trend" id="profileTrendChart"></div>
+          </section>
+          <section class="profile-section reminder-section">
+            <div class="profile-section-head"><div><span>工作提醒</span><h3>近期复核</h3></div><strong class="count-badge" id="profileReminderCount">0</strong></div>
+            <div class="profile-reminders" id="profileReminderList"></div>
+          </section>
+        </div>
+        <section class="profile-section">
+          <div class="profile-section-head"><div><span>最近一次评估</span><h3>领域表现</h3></div><small>用于确定优先目标，不替代临床诊断</small></div>
+          <div class="profile-domain-list" id="profileDomainList"></div>
+        </section>
+        <section class="profile-section">
+          <div class="profile-section-head"><div><span>系统自动整理</span><h3>评估摘要与干预重点</h3></div><small>须由专业人员结合原始观察复核</small></div>
+          <div class="profile-insight-grid">
+            <div><h4>综合摘要</h4><p id="profileAnalysisSummary">尚无有效摘要</p></div>
+            <div><h4>优势与优先需要</h4><ol id="profilePriorityNeeds"></ol></div>
+            <div><h4>建议支持</h4><ol id="profileStrategyList"></ol></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="profile-tab-panel" data-profile-panel="goals">
+        <div class="profile-action-bar"><div><span class="eyebrow">阶段计划</span><h3>可测量康复目标</h3></div><button class="button primary" id="addGoalBtn" type="button">新增目标</button></div>
+        <div class="goal-list" id="profileGoalList"></div>
+      </section>
+
+      <section class="profile-tab-panel" data-profile-panel="interventions">
+        <div class="profile-action-bar"><div><span class="eyebrow">连续观察</span><h3>干预与泛化记录</h3></div><button class="button primary" id="addInterventionBtn" type="button">记录干预</button></div>
+        <div class="intervention-list" id="profileInterventionList"></div>
+      </section>
+
+      <section class="profile-tab-panel" data-profile-panel="assessments">
+        <div class="profile-action-bar"><div><span class="eyebrow">复评档案</span><h3>历次评估与版本</h3></div></div>
+        <div class="assessment-timeline" id="profileAssessmentTimeline"></div>
+      </section>
+    </div>
+    <div class="team-dialog-actions profile-dialog-actions">
+      <div class="profile-manage-actions"><button class="button quiet" id="editStudentBtn" type="button" hidden>编辑学生</button></div>
+      <div>
+        <button class="button quiet" id="exportProgressDocxBtn" type="button">导出阶段档案</button>
+        <button class="button primary" id="startProfileAssessmentBtn" type="button">开始评估</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal form-dialog" id="studentFormDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">授权名单管理</span><h2 id="studentFormTitle">新增学生</h2></div>
+      <button class="icon-button close-student-form" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <form class="modal-body structured-form" id="studentForm">
+      <input id="studentFormId" type="hidden">
+      <div class="form-grid two-columns">
+        <label class="team-field"><span>学生姓名</span><input id="studentFormName" maxlength="40" required></label>
+        <label class="team-field"><span>班级</span><input id="studentFormClass" maxlength="40" required placeholder="如：康融一班"></label>
+        <label class="team-field"><span>内部协作编号</span><input id="studentFormCode" maxlength="40" required placeholder="如：KR1-013"></label>
+        <label class="team-field"><span>年级</span><input id="studentFormGrade" maxlength="30" placeholder="如：一年级"></label>
+        <label class="team-field"><span>学年</span><input id="studentFormYear" maxlength="9" required placeholder="2026-2027"></label>
+        <label class="team-field"><span>班内序号</span><input id="studentFormOrder" type="number" min="0" max="999" required></label>
+      </div>
+      <p class="form-note">仅录入学校已授权的姓名、班级与内部编号；不要填写学籍号、联系方式或家庭住址。</p>
+      <div class="form-error" id="studentFormError" role="alert"></div>
+      <div class="modal-actions split-actions"><button class="button danger" id="archiveStudentBtn" type="button" hidden>归档学生</button><div><button class="button quiet close-student-form" type="button">取消</button><button class="button primary" type="submit">保存学生</button></div></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal form-dialog" id="goalDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">阶段康复计划</span><h2 id="goalDialogTitle">新增康复目标</h2></div>
+      <button class="icon-button close-goal-dialog" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <form class="modal-body structured-form" id="goalForm">
+      <input id="goalFormId" type="hidden">
+      <label class="team-field"><span>功能性目标</span><input id="goalTitle" maxlength="100" required placeholder="如：在课前活动中完成3步身体准备流程"></label>
+      <label class="team-field"><span>达成标准</span><textarea id="goalCriteria" maxlength="600" required placeholder="写明情境、行为、支持程度和成功频率"></textarea></label>
+      <div class="form-grid two-columns">
+        <label class="team-field"><span>基线水平</span><select id="goalBaseline" required><option value="1">1 · 全程协助</option><option value="2">2 · 大量协助</option><option value="3">3 · 部分提示</option><option value="4">4 · 少量提示</option><option value="5">5 · 独立稳定</option></select></label>
+        <label class="team-field"><span>目标水平</span><select id="goalTarget" required><option value="1">1 · 全程协助</option><option value="2">2 · 大量协助</option><option value="3" selected>3 · 部分提示</option><option value="4">4 · 少量提示</option><option value="5">5 · 独立稳定</option></select></label>
+        <label class="team-field"><span>优先级</span><select id="goalPriority" required><option value="high">优先</option><option value="medium" selected>常规重点</option><option value="routine">维持与泛化</option></select></label>
+        <label class="team-field"><span>完成进度</span><div class="range-field"><input id="goalProgress" type="range" min="0" max="100" step="5" value="0"><output id="goalProgressOutput">0%</output></div></label>
+        <label class="team-field"><span>开始日期</span><input id="goalStartDate" type="date" required></label>
+        <label class="team-field"><span>复核日期</span><input id="goalReviewDate" type="date" required></label>
+        <label class="team-field"><span>目标状态</span><select id="goalStatus" required><option value="active">执行中</option><option value="achieved">已达成</option><option value="paused">暂停</option><option value="archived">归档</option></select></label>
+      </div>
+      <p class="form-note">建议使用“在什么情境、完成什么行为、需要多少支持、达到多高频率”的句式。</p>
+      <div class="form-error" id="goalFormError" role="alert"></div>
+      <div class="modal-actions"><button class="button quiet close-goal-dialog" type="button">取消</button><button class="button primary" type="submit">保存目标</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal form-dialog" id="interventionDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">结构化过程记录</span><h2>记录一次干预</h2></div>
+      <button class="icon-button close-intervention-dialog" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <form class="modal-body structured-form" id="interventionForm">
+      <div class="form-grid two-columns">
+        <label class="team-field"><span>干预日期</span><input id="interventionDate" type="date" required></label>
+        <label class="team-field"><span>时长（分钟）</span><input id="interventionDuration" type="number" min="1" max="480" value="30" required></label>
+        <label class="team-field"><span>关联目标</span><select id="interventionGoal"><option value="">未关联具体目标</option></select></label>
+        <label class="team-field"><span>实施情境</span><select id="interventionSetting" required><option value="therapy">康复训练</option><option value="classroom">课堂</option><option value="daily_living">日常生活</option><option value="home">家庭</option><option value="community">社区</option></select></label>
+        <label class="team-field"><span>资料来源</span><select id="interventionObserver" required><option value="therapist">康复治疗师观察</option><option value="teacher">教师反馈</option><option value="family">家庭反馈</option><option value="multidisciplinary">跨专业共同观察</option></select></label>
+        <label class="team-field"><span>实际支持等级</span><select id="interventionSupport" required><option value="1">1 · 全程协助</option><option value="2">2 · 大量协助</option><option value="3" selected>3 · 部分提示</option><option value="4">4 · 少量提示</option><option value="5">5 · 独立稳定</option></select></label>
+        <label class="team-field"><span>反应表现</span><select id="interventionResponse" required><option value="limited">反应有限</option><option value="emerging">开始出现</option><option value="stable" selected>较稳定</option><option value="generalized">可泛化</option></select></label>
+      </div>
+      <label class="team-field"><span>客观观察</span><textarea id="interventionNote" maxlength="800" required placeholder="记录可观察的任务表现、提示方式、次数或持续时间"></textarea></label>
+      <label class="team-field"><span>下次调整</span><textarea id="interventionNextStep" maxlength="600" placeholder="记录下一步材料、环境或支持调整"></textarea></label>
+      <p class="form-note">家庭反馈仅作为资料来源记录；请勿在自由文本中写入联系方式、住址或身份号码。</p>
+      <div class="form-error" id="interventionFormError" role="alert"></div>
+      <div class="modal-actions"><button class="button quiet close-intervention-dialog" type="button">取消</button><button class="button primary" type="submit">保存记录</button></div>
+    </form>
   </dialog>
 
   <dialog class="modal account-dialog" id="accountDialog">

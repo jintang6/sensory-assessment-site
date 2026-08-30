@@ -13,7 +13,13 @@ const INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const INVITE_CODE_PATTERN = /^KFB[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/;
 const TEAM_ROLES = new Set(["admin", "evaluator", "viewer"]);
 const TEAM_MEMBER_STATUSES = new Set(["active", "disabled"]);
+const GOAL_PRIORITIES = new Set(["high", "medium", "routine"]);
+const GOAL_STATUSES = new Set(["active", "achieved", "paused", "archived"]);
+const INTERVENTION_SETTINGS = new Set(["classroom", "therapy", "daily_living", "home", "community"]);
+const OBSERVER_TYPES = new Set(["therapist", "teacher", "family", "multidisciplinary"]);
+const RESPONSE_LEVELS = new Set(["limited", "emerging", "stable", "generalized"]);
 let teamRosterSchemaReady = false;
+let teamCareSchemaReady = false;
 
 function allowedOrigin(request, env) {
   const origin = request.headers.get("Origin");
@@ -78,6 +84,10 @@ function cleanArray(value, maxItems = 12, maxLength = 120) {
 function cleanDate(value) {
   const text = cleanString(value, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+function shanghaiDate(offsetDays = 0) {
+  return new Date(Date.now() + (8 * 60 * 60 * 1000) + offsetDays * 86400000).toISOString().slice(0, 10);
 }
 
 function cleanScore(value) {
@@ -469,6 +479,53 @@ async function ensureTeamRosterSchema(env) {
   teamRosterSchemaReady = true;
 }
 
+async function ensureTeamCareSchema(env) {
+  if (teamCareSchemaReady) return;
+  await ensureTeamRosterSchema(env);
+  await env.DB.batch([
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS team_goals (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL REFERENCES team_students (id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        success_criteria TEXT NOT NULL,
+        baseline_level INTEGER NOT NULL CHECK (baseline_level BETWEEN 1 AND 5),
+        target_level INTEGER NOT NULL CHECK (target_level BETWEEN 1 AND 5),
+        progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+        priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'routine')),
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'achieved', 'paused', 'archived')),
+        start_date TEXT NOT NULL,
+        review_date TEXT NOT NULL,
+        created_by_user_id TEXT NOT NULL REFERENCES team_members (user_id),
+        updated_by_user_id TEXT NOT NULL REFERENCES team_members (user_id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS team_intervention_logs (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL REFERENCES team_students (id) ON DELETE CASCADE,
+        goal_id TEXT REFERENCES team_goals (id) ON DELETE SET NULL,
+        session_date TEXT NOT NULL,
+        duration_minutes INTEGER NOT NULL CHECK (duration_minutes BETWEEN 1 AND 480),
+        setting TEXT NOT NULL CHECK (setting IN ('classroom', 'therapy', 'daily_living', 'home', 'community')),
+        observer_type TEXT NOT NULL CHECK (observer_type IN ('therapist', 'teacher', 'family', 'multidisciplinary')),
+        support_level INTEGER NOT NULL CHECK (support_level BETWEEN 1 AND 5),
+        response_level TEXT NOT NULL CHECK (response_level IN ('limited', 'emerging', 'stable', 'generalized')),
+        note TEXT NOT NULL,
+        next_step TEXT NOT NULL DEFAULT '',
+        created_by_user_id TEXT NOT NULL REFERENCES team_members (user_id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_team_goals_student_status ON team_goals(student_id, status, review_date, priority)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_team_interventions_student_date ON team_intervention_logs(student_id, session_date DESC, created_at DESC)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_team_interventions_goal ON team_intervention_logs(goal_id, session_date DESC)")
+  ]);
+  teamCareSchemaReady = true;
+}
+
 async function authPost(auth, request, pathname, body = {}) {
   const url = new URL(request.url);
   url.pathname = pathname;
@@ -853,7 +910,7 @@ async function handleChangePassword(request, env) {
 async function handleTeamSummary(request, env) {
   const identity = await teamIdentity(request, env);
   if (identity.denied) return identity.denied;
-  await ensureTeamRosterSchema(env);
+  await ensureTeamCareSchema(env);
   const isTeamAdmin = identity.member.role === "admin";
   const [metrics, studentResult, recordsResult, analysisResult, memberResult, inviteResult, auditResult] = await Promise.all([
     env.DB.prepare(`
@@ -868,13 +925,25 @@ async function handleTeamSummary(request, env) {
         (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL) AS total_records,
         (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL AND date(updated_at) = date('now')) AS today_updates,
         (SELECT COUNT(*) FROM team_members WHERE status = 'active') AS active_members,
-        (SELECT COUNT(*) FROM team_members WHERE status = 'active' AND last_active_at >= datetime('now', '-10 minutes')) AS online_members
+        (SELECT COUNT(*) FROM team_members WHERE status = 'active' AND last_active_at >= datetime('now', '-10 minutes')) AS online_members,
+        (SELECT COUNT(*) FROM team_goals WHERE status = 'active') AS active_goals,
+        (SELECT COUNT(*) FROM team_goals
+          WHERE status = 'active' AND date(review_date) <= date('now', '+8 hours', '+7 days')) AS due_goals,
+        (SELECT COUNT(*) FROM team_intervention_logs
+          WHERE date(session_date) >= date('now', '+8 hours', 'start of month')) AS intervention_month
     `).first(),
     env.DB.prepare(`
       SELECT s.id, s.student_code, s.student_name, s.class_name, s.grade_name, s.school_year,
              s.roster_order, s.created_at, s.updated_at,
              a.id AS assessment_id, a.assessment_date, a.overall_score, a.coverage,
-             a.updated_at AS assessment_updated_at
+             a.updated_at AS assessment_updated_at,
+             (SELECT COUNT(*) FROM team_goals goal
+               WHERE goal.student_id = s.id AND goal.status = 'active') AS active_goal_count,
+             (SELECT COUNT(*) FROM team_goals goal
+               WHERE goal.student_id = s.id AND goal.status = 'active'
+                 AND date(goal.review_date) <= date('now', '+8 hours', '+7 days')) AS due_goal_count,
+             (SELECT MAX(log.session_date) FROM team_intervention_logs log
+               WHERE log.student_id = s.id) AS last_intervention_date
       FROM team_students s
       LEFT JOIN team_assessments a ON a.id = (
         SELECT latest.id
@@ -968,6 +1037,7 @@ async function handleTeamRecord(request, env, id) {
   await auditStatement(env, identity.member.user_id, "assessment.view", "assessment", record.id).run();
   const assessment = parseJson(record.assessment_json);
   assessment.studentName = record.student_name || "";
+  assessment.studentCode = record.student_code || assessment.studentCode || "";
   assessment.className = record.class_name || "";
   return json(request, env, {
     ...record,
@@ -980,6 +1050,383 @@ async function handleTeamRecord(request, env, id) {
     analysis_json: undefined,
     versions: versions.results || []
   });
+}
+
+function integerInRange(value, minimum, maximum) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= minimum && number <= maximum ? number : null;
+}
+
+function validSchoolYear(value) {
+  const schoolYear = cleanString(value, 20);
+  const match = schoolYear.match(/^(\d{4})-(\d{4})$/);
+  return match && Number(match[2]) === Number(match[1]) + 1 ? schoolYear : "";
+}
+
+async function findActiveTeamStudent(env, id) {
+  return env.DB.prepare(`
+    SELECT id, student_code, student_name, class_name, grade_name, school_year,
+           roster_order, status, created_at, updated_at
+    FROM team_students
+    WHERE id = ? AND status = 'active'
+  `).bind(cleanString(id, 80)).first();
+}
+
+async function handleTeamStudentProfile(request, env, id) {
+  const identity = await teamIdentity(request, env);
+  if (identity.denied) return identity.denied;
+  await ensureTeamCareSchema(env);
+  const student = await findActiveTeamStudent(env, id);
+  if (!student) return json(request, env, { error: "未找到在册学生" }, 404);
+
+  const [assessmentResult, versionResult, goalResult, interventionResult] = await Promise.all([
+    env.DB.prepare(`
+      SELECT id, client_record_id, student_code, age_text, gender, primary_need,
+             assessment_date, overall_score, coverage, version, assessment_json,
+             analysis_json, created_at, updated_at
+      FROM team_assessments
+      WHERE student_code = ? AND deleted_at IS NULL
+      ORDER BY date(assessment_date) DESC, datetime(updated_at) DESC
+      LIMIT 60
+    `).bind(student.student_code).all(),
+    env.DB.prepare(`
+      SELECT v.assessment_id, v.version, v.assessment_json, v.analysis_json, v.created_at,
+             member.display_name AS changed_by_name
+      FROM team_assessment_versions v
+      JOIN team_assessments assessment ON assessment.id = v.assessment_id
+      LEFT JOIN team_members member ON member.user_id = v.changed_by_user_id
+      WHERE assessment.student_code = ? AND assessment.deleted_at IS NULL
+      ORDER BY datetime(v.created_at), v.version
+      LIMIT 160
+    `).bind(student.student_code).all(),
+    env.DB.prepare(`
+      SELECT goal.*, creator.display_name AS created_by_name, updater.display_name AS updated_by_name
+      FROM team_goals goal
+      LEFT JOIN team_members creator ON creator.user_id = goal.created_by_user_id
+      LEFT JOIN team_members updater ON updater.user_id = goal.updated_by_user_id
+      WHERE goal.student_id = ? AND goal.status != 'archived'
+      ORDER BY CASE goal.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,
+               date(goal.review_date), goal.priority, datetime(goal.updated_at) DESC
+      LIMIT 100
+    `).bind(student.id).all(),
+    env.DB.prepare(`
+      SELECT log.*, goal.title AS goal_title, member.display_name AS created_by_name
+      FROM team_intervention_logs log
+      LEFT JOIN team_goals goal ON goal.id = log.goal_id
+      LEFT JOIN team_members member ON member.user_id = log.created_by_user_id
+      WHERE log.student_id = ?
+      ORDER BY date(log.session_date) DESC, datetime(log.created_at) DESC
+      LIMIT 160
+    `).bind(student.id).all()
+  ]);
+
+  const assessments = (assessmentResult.results || []).map((row) => ({
+    ...row,
+    assessment: {
+      ...parseJson(row.assessment_json),
+      studentName: student.student_name,
+      studentCode: student.student_code,
+      className: student.class_name
+    },
+    analysis: parseJson(row.analysis_json),
+    assessment_json: undefined,
+    analysis_json: undefined
+  }));
+  const rawAssessmentPoints = (versionResult.results || []).map((row) => {
+    const assessment = parseJson(row.assessment_json);
+    const analysis = parseJson(row.analysis_json);
+    const domains = Object.fromEntries(Object.entries(analysis.domainScores || {}).map(([domainId, domain]) => [domainId, {
+      title: cleanString(domain?.title || domainId, 100),
+      score: Number(domain?.score) || 0
+    }]));
+    return {
+      assessmentId: row.assessment_id,
+      version: Number(row.version) || 1,
+      assessmentDate: cleanDate(assessment.assessmentDate) || String(row.created_at || "").slice(0, 10),
+      score: analysis.average == null ? null : Number(analysis.average),
+      coverage: Number(analysis.coverage) || 0,
+      domains,
+      changedByName: row.changed_by_name || "",
+      createdAt: row.created_at
+    };
+  });
+  const assessmentPointMap = new Map();
+  rawAssessmentPoints.forEach((point) => assessmentPointMap.set(`${point.assessmentId}:${point.assessmentDate}`, point));
+  const assessmentPoints = [...assessmentPointMap.values()].sort((left, right) => String(left.assessmentDate).localeCompare(String(right.assessmentDate)) || Number(left.version) - Number(right.version));
+  const goals = goalResult.results || [];
+  const interventions = interventionResult.results || [];
+  const today = shanghaiDate();
+  const reminderLimit = shanghaiDate(7);
+  const reminders = goals
+    .filter((goal) => goal.status === "active" && goal.review_date <= reminderLimit)
+    .map((goal) => ({
+      goalId: goal.id,
+      title: goal.title,
+      reviewDate: goal.review_date,
+      status: goal.review_date < today ? "overdue" : goal.review_date === today ? "today" : "upcoming"
+    }));
+
+  await auditStatement(env, identity.member.user_id, "student.profile_view", "student", student.id).run();
+  return json(request, env, {
+    generatedAt: new Date().toISOString(),
+    student,
+    currentUser: {
+      id: identity.member.user_id,
+      displayName: identity.member.display_name,
+      role: identity.member.role,
+      roleLabel: roleLabel(identity.member.role)
+    },
+    capabilities: {
+      canEdit: ["admin", "evaluator"].includes(identity.member.role),
+      canManageRoster: identity.member.role === "admin"
+    },
+    metrics: {
+      assessmentCount: assessmentPoints.length || assessments.length,
+      activeGoalCount: goals.filter((goal) => goal.status === "active").length,
+      dueGoalCount: reminders.length,
+      interventionCount: interventions.length,
+      interventionMinutes: interventions.reduce((sum, row) => sum + (Number(row.duration_minutes) || 0), 0),
+      lastInterventionDate: interventions[0]?.session_date || ""
+    },
+    latestAssessment: assessments[0] || null,
+    assessments,
+    assessmentPoints,
+    goals,
+    interventions,
+    reminders
+  });
+}
+
+async function handleUpsertTeamStudent(request, env) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin"]);
+  if (denied) return denied;
+  await ensureTeamCareSchema(env);
+  const body = await parseBody(request, 16_000);
+  const id = cleanString(body.id, 80);
+  const studentCode = normalizeTeamStudentCode(body.studentCode);
+  const studentName = cleanString(body.studentName, 40);
+  const className = cleanString(body.className, 40);
+  const gradeName = cleanString(body.gradeName, 30);
+  const schoolYear = validSchoolYear(body.schoolYear);
+  const rosterOrder = integerInRange(body.rosterOrder, 0, 999);
+  if (!studentCode || studentName.length < 2 || className.length < 2 || !schoolYear || rosterOrder === null) {
+    return json(request, env, { error: "请完整填写姓名、班级、连续学年、序号和同时含字母数字的协作编号" }, 400);
+  }
+
+  const duplicate = await env.DB.prepare(`
+    SELECT id FROM team_students
+    WHERE (student_code = ? OR (student_name = ? AND class_name = ? AND school_year = ?))
+      AND (? = '' OR id != ?)
+    LIMIT 1
+  `).bind(studentCode, studentName, className, schoolYear, id, id).first();
+  if (duplicate) return json(request, env, { error: "协作编号重复，或同一学年班级中已有同名学生" }, 409);
+
+  if (id) {
+    const existing = await findActiveTeamStudent(env, id);
+    if (!existing) return json(request, env, { error: "未找到在册学生" }, 404);
+    await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE team_students
+        SET student_code = ?, student_name = ?, class_name = ?, grade_name = ?, school_year = ?,
+            roster_order = ?, updated_by_user_id = ?, updated_at = datetime('now')
+        WHERE id = ? AND status = 'active'
+      `).bind(studentCode, studentName, className, gradeName, schoolYear, rosterOrder, identity.member.user_id, id),
+      env.DB.prepare("UPDATE team_assessments SET student_code = ? WHERE student_code = ?").bind(studentCode, existing.student_code),
+      auditStatement(env, identity.member.user_id, "student.update", "student", id, {
+        changedCode: studentCode !== existing.student_code,
+        changedClass: className !== existing.class_name,
+        changedSchoolYear: schoolYear !== existing.school_year
+      })
+    ]);
+    return json(request, env, { ok: true, id, updated: true });
+  }
+
+  const studentId = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO team_students (
+        id, student_code, student_name, class_name, grade_name, school_year, roster_order,
+        status, created_by_user_id, updated_by_user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'), datetime('now'))
+    `).bind(studentId, studentCode, studentName, className, gradeName, schoolYear, rosterOrder, identity.member.user_id, identity.member.user_id),
+    auditStatement(env, identity.member.user_id, "student.create", "student", studentId)
+  ]);
+  return json(request, env, { ok: true, id: studentId, created: true }, 201);
+}
+
+async function handleArchiveTeamStudent(request, env, id) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin"]);
+  if (denied) return denied;
+  await ensureTeamCareSchema(env);
+  const student = await findActiveTeamStudent(env, id);
+  if (!student) return json(request, env, { error: "未找到在册学生" }, 404);
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE team_students
+      SET status = 'archived', updated_by_user_id = ?, updated_at = datetime('now')
+      WHERE id = ? AND status = 'active'
+    `).bind(identity.member.user_id, student.id),
+    env.DB.prepare(`
+      UPDATE team_goals
+      SET status = 'paused', updated_by_user_id = ?, updated_at = datetime('now')
+      WHERE student_id = ? AND status = 'active'
+    `).bind(identity.member.user_id, student.id),
+    auditStatement(env, identity.member.user_id, "student.archive", "student", student.id)
+  ]);
+  return json(request, env, { ok: true });
+}
+
+function normalizeGoalInput(body, student) {
+  const identityValues = [student.student_name, student.class_name];
+  const title = scrubSensitiveText(body.title, identityValues).slice(0, 100);
+  const successCriteria = scrubSensitiveText(body.successCriteria, identityValues).slice(0, 600);
+  const baselineLevel = integerInRange(body.baselineLevel, 1, 5);
+  const targetLevel = integerInRange(body.targetLevel, 1, 5);
+  let progress = integerInRange(body.progress ?? 0, 0, 100);
+  const priority = cleanString(body.priority, 20);
+  const status = cleanString(body.status || "active", 20);
+  const startDate = cleanDate(body.startDate);
+  const reviewDate = cleanDate(body.reviewDate);
+  if (title.length < 2 || successCriteria.length < 2 || baselineLevel === null || targetLevel === null
+    || progress === null || !GOAL_PRIORITIES.has(priority) || !GOAL_STATUSES.has(status)
+    || !startDate || !reviewDate || targetLevel < baselineLevel || reviewDate < startDate) return null;
+  if (status === "achieved") progress = 100;
+  return { title, successCriteria, baselineLevel, targetLevel, progress, priority, status, startDate, reviewDate };
+}
+
+async function handleCreateTeamGoal(request, env, studentId) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin", "evaluator"]);
+  if (denied) return denied;
+  await ensureTeamCareSchema(env);
+  const student = await findActiveTeamStudent(env, studentId);
+  if (!student) return json(request, env, { error: "未找到在册学生" }, 404);
+  const body = await parseBody(request, 16_000);
+  const goal = normalizeGoalInput(body, student);
+  if (!goal) return json(request, env, { error: "请完整填写目标、达成标准、1至5级基线与目标、进度和有效复核日期" }, 400);
+  const id = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO team_goals (
+        id, student_id, title, success_criteria, baseline_level, target_level, progress,
+        priority, status, start_date, review_date, created_by_user_id, updated_by_user_id,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `).bind(id, student.id, goal.title, goal.successCriteria, goal.baselineLevel, goal.targetLevel,
+      goal.progress, goal.priority, goal.status, goal.startDate, goal.reviewDate,
+      identity.member.user_id, identity.member.user_id),
+    auditStatement(env, identity.member.user_id, "goal.create", "goal", id, {
+      studentId: student.id, priority: goal.priority, reviewDate: goal.reviewDate
+    })
+  ]);
+  return json(request, env, { ok: true, id }, 201);
+}
+
+async function handleUpdateTeamGoal(request, env, id) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin", "evaluator"]);
+  if (denied) return denied;
+  await ensureTeamCareSchema(env);
+  const existing = await env.DB.prepare(`
+    SELECT goal.id, goal.student_id, student.student_name, student.class_name, student.status AS student_status
+    FROM team_goals goal
+    JOIN team_students student ON student.id = goal.student_id
+    WHERE goal.id = ?
+  `).bind(cleanString(id, 80)).first();
+  if (!existing || existing.student_status !== "active") return json(request, env, { error: "未找到可编辑的康复目标" }, 404);
+  const body = await parseBody(request, 16_000);
+  const goal = normalizeGoalInput(body, existing);
+  if (!goal) return json(request, env, { error: "请完整填写目标、达成标准、1至5级基线与目标、进度和有效复核日期" }, 400);
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE team_goals
+      SET title = ?, success_criteria = ?, baseline_level = ?, target_level = ?, progress = ?,
+          priority = ?, status = ?, start_date = ?, review_date = ?, updated_by_user_id = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(goal.title, goal.successCriteria, goal.baselineLevel, goal.targetLevel, goal.progress,
+      goal.priority, goal.status, goal.startDate, goal.reviewDate, identity.member.user_id, existing.id),
+    auditStatement(env, identity.member.user_id, "goal.update", "goal", existing.id, {
+      studentId: existing.student_id, status: goal.status, progress: goal.progress, reviewDate: goal.reviewDate
+    })
+  ]);
+  return json(request, env, { ok: true });
+}
+
+async function handleCreateIntervention(request, env, studentId) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin", "evaluator"]);
+  if (denied) return denied;
+  await ensureTeamCareSchema(env);
+  const student = await findActiveTeamStudent(env, studentId);
+  if (!student) return json(request, env, { error: "未找到在册学生" }, 404);
+  const body = await parseBody(request, 16_000);
+  const sessionDate = cleanDate(body.sessionDate);
+  const durationMinutes = integerInRange(body.durationMinutes, 1, 480);
+  const setting = cleanString(body.setting, 30);
+  const observerType = cleanString(body.observerType, 30);
+  const supportLevel = integerInRange(body.supportLevel, 1, 5);
+  const responseLevel = cleanString(body.responseLevel, 30);
+  const goalId = cleanString(body.goalId, 80);
+  const identityValues = [student.student_name, student.class_name];
+  const note = scrubSensitiveText(body.note, identityValues).slice(0, 800);
+  const nextStep = scrubSensitiveText(body.nextStep, identityValues).slice(0, 600);
+  const today = shanghaiDate();
+  if (!sessionDate || sessionDate > today || durationMinutes === null || !INTERVENTION_SETTINGS.has(setting)
+    || !OBSERVER_TYPES.has(observerType) || supportLevel === null || !RESPONSE_LEVELS.has(responseLevel)
+    || note.length < 2) {
+    return json(request, env, { error: "请完整填写干预日期、时长、情境、资料来源、支持等级、反应表现和客观记录" }, 400);
+  }
+  if (goalId) {
+    const linkedGoal = await env.DB.prepare("SELECT id FROM team_goals WHERE id = ? AND student_id = ? AND status != 'archived'")
+      .bind(goalId, student.id).first();
+    if (!linkedGoal) return json(request, env, { error: "所选康复目标与当前学生不匹配" }, 400);
+  }
+  const recent = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM team_audit_logs
+    WHERE user_id = ? AND action = 'intervention.create' AND created_at >= datetime('now', '-1 day')
+  `).bind(identity.member.user_id).first();
+  if (Number(recent?.count || 0) >= 200) return json(request, env, { error: "今日干预记录数量已达上限" }, 429);
+  const id = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO team_intervention_logs (
+        id, student_id, goal_id, session_date, duration_minutes, setting, observer_type,
+        support_level, response_level, note, next_step, created_by_user_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).bind(id, student.id, goalId || null, sessionDate, durationMinutes, setting, observerType,
+      supportLevel, responseLevel, note, nextStep, identity.member.user_id),
+    auditStatement(env, identity.member.user_id, "intervention.create", "intervention", id, {
+      studentId: student.id, goalLinked: Boolean(goalId), sessionDate, observerType
+    })
+  ]);
+  return json(request, env, { ok: true, id }, 201);
+}
+
+async function handleDeleteIntervention(request, env, id) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin", "evaluator"]);
+  if (denied) return denied;
+  await ensureTeamCareSchema(env);
+  const targetId = cleanString(id, 80);
+  const existing = await env.DB.prepare("SELECT id, student_id, session_date FROM team_intervention_logs WHERE id = ?").bind(targetId).first();
+  if (!existing) return json(request, env, { error: "未找到干预记录" }, 404);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM team_intervention_logs WHERE id = ?").bind(targetId),
+    auditStatement(env, identity.member.user_id, "intervention.delete", "intervention", targetId, {
+      studentId: existing.student_id, sessionDate: existing.session_date
+    })
+  ]);
+  return json(request, env, { ok: true });
+}
+
+async function handleAdminCareBootstrap(request, env) {
+  const denied = await requireAdmin(request, env);
+  if (denied) return denied;
+  await ensureTeamCareSchema(env);
+  return json(request, env, { ok: true, schema: "student_care_cycle", ready: true });
 }
 
 async function handleTeamAssessment(request, env) {
@@ -1378,8 +1825,16 @@ export async function onRequestPost(context) {
     if (path === "/api/team/change-password") return handleChangePassword(request, env);
     if (path === "/api/team/assessments") return handleTeamAssessment(request, env);
     if (path === "/api/team/invites") return handleCreateTeamInvite(request, env);
+    if (path === "/api/team/students") return handleUpsertTeamStudent(request, env);
+    const studentGoal = path.match(/^\/api\/team\/students\/([^/]+)\/goals$/);
+    if (studentGoal) return handleCreateTeamGoal(request, env, studentGoal[1]);
+    const studentIntervention = path.match(/^\/api\/team\/students\/([^/]+)\/interventions$/);
+    if (studentIntervention) return handleCreateIntervention(request, env, studentIntervention[1]);
+    const teamGoal = path.match(/^\/api\/team\/goals\/([^/]+)$/);
+    if (teamGoal) return handleUpdateTeamGoal(request, env, teamGoal[1]);
     if (path === "/api/admin/team/invites") return handleAdminBootstrapInvite(request, env);
     if (path === "/api/admin/team/roster/import") return handleAdminTeamRosterImport(request, env);
+    if (path === "/api/admin/team/care/bootstrap") return handleAdminCareBootstrap(request, env);
     if (path.startsWith("/api/team/members/")) return handleUpdateTeamMember(request, env, path.split("/").pop());
     if (path === "/api/analytics/visit") return handleVisit(request, env, false);
     if (path === "/api/analytics/heartbeat") return handleVisit(request, env, true);
@@ -1403,6 +1858,8 @@ export async function onRequestGet(context) {
   try {
     if (path === "/api/team/session") return handleTeamSession(request, env);
     if (path === "/api/team/summary") return handleTeamSummary(request, env);
+    const teamStudent = path.match(/^\/api\/team\/students\/([^/]+)$/);
+    if (teamStudent) return handleTeamStudentProfile(request, env, teamStudent[1]);
     if (path.startsWith("/api/team/records/")) return handleTeamRecord(request, env, path.split("/").pop());
     const sharedReport = reportPathMatch(path);
     if (sharedReport) {
@@ -1425,6 +1882,10 @@ export async function onRequestDelete(context) {
   if (!originIsAllowed(request, env)) return json(request, env, { error: "不允许的请求来源" }, 403);
   const path = routePath(request);
   try {
+    const teamStudent = path.match(/^\/api\/team\/students\/([^/]+)$/);
+    if (teamStudent) return handleArchiveTeamStudent(request, env, teamStudent[1]);
+    const intervention = path.match(/^\/api\/team\/interventions\/([^/]+)$/);
+    if (intervention) return handleDeleteIntervention(request, env, intervention[1]);
     if (path.startsWith("/api/team/records/")) return handleDeleteTeamRecord(request, env, path.split("/").pop());
     if (path.startsWith("/api/admin/records/")) return handleDeleteRecord(request, env, path.split("/").pop());
     return json(request, env, { error: "接口不存在" }, 404);

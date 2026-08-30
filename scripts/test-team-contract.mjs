@@ -2,16 +2,19 @@ import { readFile } from "node:fs/promises";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
-const [migration, inviteMigration, reservationMigration, rosterMigration, api, auth, index, app, team, admin] = await Promise.all([
+const [migration, inviteMigration, reservationMigration, rosterMigration, careMigration, api, auth, index, app, team, teamJs, reportDocx, admin] = await Promise.all([
   read("migrations/0003_team_collaboration.sql"),
   read("migrations/0004_invitation_codes.sql"),
   read("migrations/0005_invite_reservations.sql"),
   read("migrations/0006_team_student_roster.sql"),
+  read("migrations/0007_student_care_cycle.sql"),
   read("functions/api/[[path]].js"),
   read("functions/_lib/auth.js"),
   read("index.html"),
   read("app.js"),
   read("team.html"),
+  read("team.js"),
+  read("report-docx.js"),
   read("admin.html")
 ]);
 
@@ -44,6 +47,14 @@ assert(rosterMigration.includes("student_name TEXT NOT NULL"), "team roster must
 assert(rosterMigration.includes("class_name TEXT NOT NULL"), "team roster must store the authorized class name");
 assert(rosterMigration.includes("REFERENCES team_members (user_id)"), "team roster changes must be attributable to a member");
 
+const goalTable = careMigration.match(/CREATE TABLE IF NOT EXISTS team_goals\s*\(([\s\S]*?)\n\);/i)?.[1] || "";
+const interventionTable = careMigration.match(/CREATE TABLE IF NOT EXISTS team_intervention_logs\s*\(([\s\S]*?)\n\);/i)?.[1] || "";
+assert(goalTable.includes("student_id TEXT NOT NULL REFERENCES team_students"), "goals must link to the restricted student roster by id");
+assert(interventionTable.includes("student_id TEXT NOT NULL REFERENCES team_students"), "interventions must link to the restricted student roster by id");
+assert(interventionTable.includes("goal_id TEXT REFERENCES team_goals"), "interventions must optionally link to a rehabilitation goal");
+assert(!goalTable.includes("student_name") && !goalTable.includes("class_name"), "goal records must not duplicate roster identity");
+assert(!interventionTable.includes("student_name") && !interventionTable.includes("class_name"), "intervention records must not duplicate roster identity");
+
 assert(auth.includes("disableIpTracking: true"), "authentication IP tracking must stay disabled");
 assert(auth.includes("minPasswordLength: 12"), "minimum team password length must stay at 12");
 assert(auth.includes("autoSignIn: false"), "public sign-up must not auto-create a session");
@@ -66,6 +77,18 @@ assert(api.includes('privacyMode: "restricted_roster"'), "team privacy mode must
 assert(api.includes("async function ensureTeamRosterSchema"), "team roster needs a safe runtime migration fallback");
 assert(api.includes('path === "/api/admin/team/roster/import"'), "protected roster import endpoint is missing");
 assert(api.includes("async function handleAdminTeamRosterImport"), "admin roster import handler is missing");
+assert(api.includes("async function ensureTeamCareSchema"), "student care data needs a safe runtime migration fallback");
+assert(api.includes('path === "/api/admin/team/care/bootstrap"'), "protected care schema bootstrap endpoint is missing");
+assert(api.includes("handleTeamStudentProfile"), "student rehabilitation profile endpoint is missing");
+assert(api.includes("handleUpsertTeamStudent"), "student roster lifecycle endpoint is missing");
+assert(api.includes("handleCreateTeamGoal"), "rehabilitation goal endpoint is missing");
+assert(api.includes("handleCreateIntervention"), "intervention log endpoint is missing");
+assert(api.includes('requireRole(request, env, identity, ["admin", "evaluator"])'), "care records must enforce evaluator permissions");
+assert(api.includes("scrubSensitiveText(body.note, identityValues)"), "intervention notes must be scrubbed on the server");
+assert(api.includes("scrubSensitiveText(body.successCriteria, identityValues)"), "goal criteria must be scrubbed on the server");
+assert(api.includes('"student.archive"'), "student archive actions must be audited");
+assert(api.includes('"goal.update"'), "goal changes must be audited");
+assert(api.includes('"intervention.delete"'), "intervention deletions must be audited");
 
 assert(!index.includes('value="full"'), "the full-record sync option must not return to the assessment UI");
 assert(app.includes('/api/team/assessments'), "assessment sync must target the authenticated team endpoint");
@@ -77,5 +100,12 @@ assert(!team.includes('id="inviteEmail"'), "team admins must not enter a recipie
 assert(admin.includes('id="bootstrapInviteCode"'), "bootstrap invitation code output is missing");
 assert(!admin.includes('id="bootstrapAdminEmail"'), "bootstrap must not require the first admin email");
 assert(team.includes('value="viewer"'), "read-only team role is missing from the UI");
+assert(team.includes('id="studentProfileDialog"'), "student rehabilitation profile is missing from the team UI");
+assert(team.includes('id="goalDialog"'), "goal editor is missing from the team UI");
+assert(team.includes('id="interventionDialog"'), "intervention editor is missing from the team UI");
+assert(team.includes("1 · 全程协助") && team.includes("5 · 独立稳定"), "the 1-to-5 support scale must be visible while recording");
+assert(teamJs.includes("renderProfileTrend"), "reassessment trend rendering is missing");
+assert(teamJs.includes("studentProgressFilename"), "student stage report export is missing from the team UI");
+assert(reportDocx.includes("buildStudentProgressDocument"), "student stage DOCX generator is missing");
 
 process.stdout.write("team privacy and authorization contract passed\n");
