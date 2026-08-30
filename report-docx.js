@@ -86,7 +86,7 @@ export function buildAssessmentReportDocument(row, api) {
   const documentNumber = reportNumber(row, record);
   const privacyMode = Number(row?.is_deidentified) === 1 ? "去标识化记录" : "完整记录";
   const impactLabels = ["无明显影响", "轻度影响", "中度影响", "显著影响"];
-  const font = { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_CJK, cs: FONT_CJK };
+  const font = { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_CJK, cs: FONT_CJK, hint: "eastAsia" };
   const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: COLORS.line };
   const tableBorders = {
     top: thinBorder,
@@ -101,10 +101,11 @@ export function buildAssessmentReportDocument(row, api) {
   const run = (text, options = {}) => new TextRun({
     text: String(text ?? ""),
     font,
-    size: options.size ?? 22,
+    size: options.size ?? 24,
     color: options.color || COLORS.ink,
     bold: options.bold,
-    italics: options.italics
+    italics: options.italics,
+    language: { value: "zh-CN", eastAsia: "zh-CN" }
   });
 
   const bodyParagraph = (text, options = {}) => new Paragraph({
@@ -116,15 +117,24 @@ export function buildAssessmentReportDocument(row, api) {
   });
 
   const heading = (text) => new Paragraph({
-    children: [run(text, { size: 29, bold: true, color: COLORS.navy })],
+    children: [run(text, { size: 32, bold: true, color: COLORS.navy })],
     style: "ReportHeading1",
     border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: COLORS.teal } }
   });
 
-  const bulletList = (items) => (Array.isArray(items) && items.length ? items : ["暂无"]).map((item) => new Paragraph({
+  const numberingReferences = [
+    "report-basis",
+    "report-alerts",
+    "report-strengths",
+    "report-needs",
+    "report-goals",
+    "report-strategies"
+  ];
+
+  const numberedList = (items, reference) => (Array.isArray(items) && items.length ? items : ["暂无"]).map((item) => new Paragraph({
     children: [run(item)],
-    numbering: { reference: "report-bullets", level: 0 },
-    style: "ReportBullet"
+    numbering: { reference, level: 0 },
+    style: "ReportNumbered"
   }));
 
   const metadataCell = (label, value) => new TableCell({
@@ -134,11 +144,11 @@ export function buildAssessmentReportDocument(row, api) {
     children: [
       new Paragraph({
         spacing: { after: 20 },
-        children: [run(label, { size: 17, bold: true, color: COLORS.faint })]
+        children: [run(label, { size: 19, bold: true, color: COLORS.faint })]
       }),
       new Paragraph({
         spacing: { after: 0 },
-        children: [run(valueOr(value), { size: 20, bold: true, color: COLORS.ink })]
+        children: [run(valueOr(value), { size: 22, bold: true, color: COLORS.ink })]
       })
     ]
   });
@@ -169,9 +179,9 @@ export function buildAssessmentReportDocument(row, api) {
     margins: { top: 130, bottom: 130, left: 150, right: 150, marginUnitType: WidthType.DXA },
     verticalAlign: VerticalAlign.CENTER,
     children: [
-      new Paragraph({ spacing: { after: 180 }, children: [run(label, { size: 18, bold: true, color: COLORS.faint })] }),
-      new Paragraph({ spacing: { after: 180 }, children: [run(valueOr(value, "________________"), { size: 20, bold: Boolean(value), color: COLORS.ink })] }),
-      new Paragraph({ spacing: { after: 0 }, children: [run("日期：________________", { size: 17, color: COLORS.faint })] })
+      new Paragraph({ spacing: { after: 180 }, children: [run(label, { size: 20, bold: true, color: COLORS.faint })] }),
+      new Paragraph({ spacing: { after: 180 }, children: [run(valueOr(value, "________________"), { size: 22, bold: Boolean(value), color: COLORS.ink })] }),
+      new Paragraph({ spacing: { after: 0 }, children: [run("日期：________________", { size: 18, color: COLORS.faint })] })
     ]
   });
 
@@ -204,7 +214,7 @@ export function buildAssessmentReportDocument(row, api) {
       children: [new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { after: 0 },
-        children: [run(label, { size: 18, bold: true, color: COLORS.blue })]
+        children: [run(label, { size: 20, bold: true, color: COLORS.blue })]
       })]
     }))
   });
@@ -229,7 +239,7 @@ export function buildAssessmentReportDocument(row, api) {
         children: [new Paragraph({
           alignment: index >= 1 && index <= 3 ? AlignmentType.CENTER : AlignmentType.LEFT,
           spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO },
-          children: [run(value, { size: 18, color: index === 1 ? COLORS.tealDark : COLORS.ink, bold: index === 1 })]
+          children: [run(value, { size: 20, color: index === 1 ? COLORS.tealDark : COLORS.ink, bold: index === 1 })]
         })]
       }))
     });
@@ -259,8 +269,8 @@ export function buildAssessmentReportDocument(row, api) {
       spacing: { after: 0 },
       border: { bottom: { style: BorderStyle.SINGLE, size: 5, color: COLORS.line } },
       children: [
-        run(organizationName, { size: 18, bold: true, color: COLORS.navy }),
-        run(`    |    ${privacyMode} · 保密文件`, { size: 16, color: COLORS.faint })
+        run(organizationName, { size: 20, bold: true, color: COLORS.navy }),
+        run(`    |    ${privacyMode} · 保密文件`, { size: 18, color: COLORS.faint })
       ]
     })]
   });
@@ -270,11 +280,11 @@ export function buildAssessmentReportDocument(row, api) {
       alignment: AlignmentType.RIGHT,
       spacing: { before: 0, after: 0 },
       children: [
-        run("仅供获授权的教育康复团队使用    第 ", { size: 16, color: COLORS.faint }),
-        new TextRun({ children: [PageNumber.CURRENT], font, size: 17, color: COLORS.faint }),
-        run(" 页，共 ", { size: 17, color: COLORS.faint }),
-        new TextRun({ children: [PageNumber.TOTAL_PAGES], font, size: 17, color: COLORS.faint }),
-        run(" 页", { size: 17, color: COLORS.faint })
+        run("仅供获授权的教育康复团队使用    第 ", { size: 18, color: COLORS.faint }),
+        new TextRun({ children: [PageNumber.CURRENT], font, size: 18, color: COLORS.faint }),
+        run(" 页，共 ", { size: 18, color: COLORS.faint }),
+        new TextRun({ children: [PageNumber.TOTAL_PAGES], font, size: 18, color: COLORS.faint }),
+        run(" 页", { size: 18, color: COLORS.faint })
       ]
     })]
   });
@@ -283,7 +293,7 @@ export function buildAssessmentReportDocument(row, api) {
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 80, after: 180 },
-      children: [run(organizationName, { size: 24, bold: true, color: COLORS.navy })]
+      children: [run(organizationName, { size: 26, bold: true, color: COLORS.navy })]
     }),
     new Paragraph({
       style: "ReportTitle",
@@ -293,18 +303,18 @@ export function buildAssessmentReportDocument(row, api) {
     new Paragraph({
       style: "ReportSubtitle",
       alignment: AlignmentType.CENTER,
-      children: [run(`学生标识：${title}    报告编号：${documentNumber}`, { size: 20, color: COLORS.soft })]
+      children: [run(`学生标识：${title}    报告编号：${documentNumber}`, { size: 22, color: COLORS.soft })]
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 0, after: 250 },
-      children: [run(`评估日期：${valueOr(record.assessmentDate)}    报告状态：待专业人员复核`, { size: 18, color: COLORS.faint })]
+      children: [run(`评估日期：${valueOr(record.assessmentDate)}    报告状态：待专业人员复核`, { size: 20, color: COLORS.faint })]
     }),
     new Paragraph({
       style: "ReportCallout",
       border: { left: { style: BorderStyle.SINGLE, size: 16, color: COLORS.gold } },
       shading: { fill: COLORS.goldSoft, type: ShadingType.CLEAR },
-      children: [run("报告使用说明：本报告由功能性观察数据自动整理，供教育康复团队制定和复核个别化支持计划使用；不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。", { size: 20, color: COLORS.navy })]
+      children: [run("报告使用说明：本报告由功能性观察数据自动整理，供教育康复团队制定和复核个别化支持计划使用；不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。", { size: 22, color: COLORS.navy })]
     }),
     metadataTable,
     heading("一、评估目的与方法"),
@@ -313,28 +323,28 @@ export function buildAssessmentReportDocument(row, api) {
     heading("二、评估摘要"),
     bodyParagraph(valueOr(analysis.summary, "尚未形成有效摘要。")),
     heading("三、个别化分析依据"),
-    ...bulletList(analysis.basis),
+    ...numberedList(analysis.basis, "report-basis"),
     heading("四、背景与安全信息"),
     bodyParagraph(`主要关切：${valueOr(record.background, "未填写或已去标识化")}`),
     bodyParagraph(`医疗与安全注意事项：${valueOr(record.medicalPrecautions, "未填写或已去标识化")}`),
-    ...bulletList(analysis.alerts),
+    ...numberedList(analysis.alerts, "report-alerts"),
     heading("五、相对优势"),
-    ...bulletList(analysis.strengths),
+    ...numberedList(analysis.strengths, "report-strengths"),
     heading("六、优先支持需要"),
-    ...bulletList(analysis.needs),
+    ...numberedList(analysis.needs, "report-needs"),
     heading("七、8周阶段目标"),
-    ...bulletList(analysis.goals),
+    ...numberedList(analysis.goals, "report-goals"),
     heading("八、康复、课堂与生活支持"),
-    ...bulletList(analysis.strategies),
+    ...numberedList(analysis.strategies, "report-strategies"),
     heading("九、领域表现与观察记录"),
     domainTable,
     new Paragraph({
       style: "ReportNote",
-      children: [run("评分说明：1=全程协助，2=大量协助，3=部分提示，4=少量提示，5=独立稳定。每个领域至少完成3项才形成领域分，结果应结合多情境观察、家庭优先事项和跨专业资料解释。", { size: 18, color: COLORS.faint })]
+      children: [run("评分说明：1=全程协助，2=大量协助，3=部分提示，4=少量提示，5=独立稳定。每个领域至少完成3项才形成领域分，结果应结合多情境观察、家庭优先事项和跨专业资料解释。", { size: 20, color: COLORS.faint })]
     }),
     new Paragraph({
       style: "ReportNote",
-      children: [run(`文档生成时间：${formatDateTime(new Date().toISOString())}`, { size: 18, color: COLORS.faint })]
+      children: [run(`文档生成时间：${formatDateTime(new Date().toISOString())}`, { size: 20, color: COLORS.faint })]
     }),
     heading("十、专业人员确认"),
     bodyParagraph("评估人与复核人应结合原始观察记录、家庭和教师意见及必要的跨专业资料，对本报告结论与目标进行确认。"),
@@ -342,7 +352,7 @@ export function buildAssessmentReportDocument(row, api) {
     new Paragraph({
       style: "ReportNote",
       alignment: AlignmentType.CENTER,
-      children: [run("本报告包含学生教育康复信息，请按照机构隐私制度妥善保管和传递。", { size: 17, color: COLORS.faint })]
+      children: [run("本报告包含学生教育康复信息，请按照机构隐私制度妥善保管和传递。", { size: 18, color: COLORS.faint })]
     })
   ];
 
@@ -355,8 +365,8 @@ export function buildAssessmentReportDocument(row, api) {
     styles: {
       default: {
         document: {
-          run: { font, size: 22, color: COLORS.ink },
-          paragraph: { spacing: { after: 120, line: 264, lineRule: LineRuleType.AUTO } }
+          run: { font, size: 24, color: COLORS.ink },
+          paragraph: { spacing: { after: 140, line: 300, lineRule: LineRuleType.AUTO } }
         }
       },
       paragraphStyles: [
@@ -366,8 +376,8 @@ export function buildAssessmentReportDocument(row, api) {
           basedOn: "Normal",
           next: "ReportBody",
           quickFormat: true,
-          run: { font, size: 22, color: COLORS.ink },
-          paragraph: { spacing: { before: 0, after: 120, line: 264, lineRule: LineRuleType.AUTO }, widowControl: true }
+          run: { font, size: 24, color: COLORS.ink },
+          paragraph: { spacing: { before: 0, after: 140, line: 300, lineRule: LineRuleType.AUTO }, widowControl: true }
         },
         {
           id: "ReportTitle",
@@ -397,13 +407,13 @@ export function buildAssessmentReportDocument(row, api) {
           paragraph: { spacing: { before: 320, after: 160 }, keepNext: true, outlineLevel: 0 }
         },
         {
-          id: "ReportBullet",
-          name: "Report Bullet",
+          id: "ReportNumbered",
+          name: "Report Numbered",
           basedOn: "ReportBody",
-          next: "ReportBullet",
+          next: "ReportNumbered",
           quickFormat: true,
-          run: { font, size: 22, color: COLORS.ink },
-          paragraph: { spacing: { before: 0, after: 160, line: 280, lineRule: LineRuleType.AUTO }, widowControl: true }
+          run: { font, size: 24, color: COLORS.ink },
+          paragraph: { spacing: { before: 0, after: 160, line: 300, lineRule: LineRuleType.AUTO }, widowControl: true }
         },
         {
           id: "ReportCallout",
@@ -411,8 +421,8 @@ export function buildAssessmentReportDocument(row, api) {
           basedOn: "ReportBody",
           next: "ReportBody",
           quickFormat: true,
-          run: { font, size: 20, color: COLORS.blue },
-          paragraph: { spacing: { before: 0, after: 220, line: 264, lineRule: LineRuleType.AUTO }, indent: { left: 180, right: 180 } }
+          run: { font, size: 22, color: COLORS.blue },
+          paragraph: { spacing: { before: 0, after: 220, line: 288, lineRule: LineRuleType.AUTO }, indent: { left: 180, right: 180 } }
         },
         {
           id: "ReportNote",
@@ -420,28 +430,28 @@ export function buildAssessmentReportDocument(row, api) {
           basedOn: "ReportBody",
           next: "ReportNote",
           quickFormat: true,
-          run: { font, size: 18, color: COLORS.faint },
-          paragraph: { spacing: { before: 100, after: 60, line: 240, lineRule: LineRuleType.AUTO } }
+          run: { font, size: 20, color: COLORS.faint },
+          paragraph: { spacing: { before: 100, after: 60, line: 264, lineRule: LineRuleType.AUTO } }
         }
       ]
     },
     numbering: {
-      config: [{
-        reference: "report-bullets",
+      config: numberingReferences.map((reference) => ({
+        reference,
         levels: [{
           level: 0,
-          format: LevelFormat.BULLET,
-          text: "•",
+          format: LevelFormat.DECIMAL,
+          text: "%1.",
           alignment: AlignmentType.LEFT,
           style: {
-            run: { font, size: 22, color: COLORS.teal },
+            run: { font, size: 24, bold: true, color: COLORS.teal },
             paragraph: {
               indent: { left: 720, hanging: 360 },
-              spacing: { after: 160, line: 280, lineRule: LineRuleType.AUTO }
+              spacing: { after: 160, line: 300, lineRule: LineRuleType.AUTO }
             }
           }
         }]
-      }]
+      }))
     },
     sections: [{
       properties: {

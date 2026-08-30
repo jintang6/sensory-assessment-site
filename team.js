@@ -274,7 +274,7 @@ async function loadSummary({ quiet = false } = {}) {
   }
 }
 
-function detailList(title, values, ordered = false) {
+function detailList(title, values, ordered = true) {
   const items = Array.isArray(values) && values.length ? values : ["暂无"];
   const tag = ordered ? "ol" : "ul";
   return `<section class="detail-section"><h3>${escapeHtml(title)}</h3><${tag}>${items.map((value) => `<li>${escapeHtml(value)}</li>`).join("")}</${tag}></section>`;
@@ -301,7 +301,7 @@ function renderRecordDetail(row) {
     <section class="detail-section"><h3>领域表现</h3><div class="detail-domain-grid">${domains.length ? domains.map((domain) => `<div><span>${escapeHtml(domain.title)}</span><strong>${Number(domain.score).toFixed(1)}</strong></div>`).join("") : "暂无领域数据"}</div></section>
     ${detailList("相对优势", analysis.strengths)}
     ${detailList("优先支持需要", analysis.needs)}
-    ${detailList("阶段康复目标", analysis.goals, true)}
+    ${detailList("阶段康复目标", analysis.goals)}
     ${detailList("干预与环境支持建议", analysis.strategies)}
     ${detailList("安全与解释提醒", analysis.alerts)}
     <section class="detail-section"><h3>版本记录</h3><div class="version-list">${versions.map((version) => `<span>v${version.version} · ${escapeHtml(version.changed_by_name || "成员")} · ${escapeHtml(formatDateTime(version.created_at))}</span>`).join("")}</div></section>`;

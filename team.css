@@ -737,20 +737,22 @@
 
 .team-record-meta div:nth-child(4n) { border-right: 0; }
 .team-record-meta div:nth-last-child(-n+4) { border-bottom: 0; }
-.team-record-meta span { display: block; color: var(--ink-faint); font-size: 10px; }
-.team-record-meta strong { display: block; overflow-wrap: anywhere; margin-top: 3px; font-size: 13px; }
+.team-record-meta span { display: block; color: var(--ink-faint); font-size: 12px; }
+.team-record-meta strong { display: block; overflow-wrap: anywhere; margin-top: 3px; font-size: 15px; }
 
 .detail-section h3 {
   margin: 0 0 9px;
   padding-bottom: 7px;
   border-bottom: 1px solid var(--line);
   color: #294858;
-  font-size: 15px;
+  font-size: 17px;
 }
 
-.detail-section p { color: var(--ink-soft); line-height: 1.75; }
+.detail-section p { color: var(--ink-soft); font-size: 14px; line-height: 1.75; }
 .detail-section ul,
-.detail-section ol { display: grid; gap: 7px; margin: 0; padding-left: 21px; color: var(--ink-soft); }
+.detail-section ol { display: grid; gap: 9px; margin: 0; padding-left: 25px; color: var(--ink-soft); font-size: 14px; line-height: 1.7; }
+.detail-section ol li { padding-left: 3px; }
+.detail-section ol li::marker { color: var(--teal-dark); font-weight: 800; }
 
 .detail-domain-grid {
   display: grid;
@@ -768,7 +770,7 @@
   border-radius: 5px;
   background: var(--surface-subtle);
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .version-list {
@@ -782,7 +784,7 @@
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--ink-soft);
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .team-dialog-actions {

@@ -47,14 +47,14 @@ const result = analyzeAssessment(data, {
   impactLabels: ["无明显影响", "轻度影响", "中度影响", "显著影响"]
 });
 
-assert.equal(result.methodVersion, "individualized-functional-v3");
+assert.equal(result.methodVersion, "individualized-functional-v4");
 assert.equal(result.validDomainCount, 3);
 assert.equal(result.coverage, 100);
 assert.equal(result.priorities[0].id, "regulation");
-assert.match(result.summary, /测试学生.*课堂.*优先支持领域/);
+assert.match(result.summary, /综合表现.*相对优势.*优先支持/);
 assert.match(result.goals[0], /辅助沟通设备/);
 assert.ok(result.strategies.some((item) => item.includes("近身保护")));
-assert.ok(result.basis.some((item) => item.includes("当前支持等级")));
+assert.ok(result.basis.some((item) => item.includes("支持等级")));
 assert.ok(result.alerts.some((item) => item.includes("医疗与安全注意事项")));
 assert.ok(result.domainScores.regulation.priority > result.domainScores.fineMotor.priority);
 
@@ -64,7 +64,7 @@ const partialResult = analyzeAssessment({ ...data, domains: { visual: data.domai
   impactLabels: ["无明显影响", "轻度影响", "中度影响", "显著影响"]
 });
 assert.equal(partialResult.average, null);
-assert.match(partialResult.summary, /当前已有1个有效领域/);
+assert.match(partialResult.summary, /当前有1个有效领域/);
 
 const deidentifiedRecord = deidentifyAssessmentRecord({
   ...data,

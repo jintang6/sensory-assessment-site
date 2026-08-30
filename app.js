@@ -921,20 +921,20 @@ function buildReportHtml(record) {
       </section>
     `;
   }).join("");
-  const list = (items) => `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  const list = (items) => `<ol>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`;
   const titleName = record.studentName || record.studentCode || "学生";
   const organizationName = record.organizationName || "知衡特殊教育康复评估";
   const htmlReportNumber = `ZH-SI-${String(record.assessmentDate || today()).replaceAll("-", "")}-${String(record.studentCode || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "REPORT"}`;
 
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(titleName)}-感觉统合功能评估报告</title>
   <style>
-    body{margin:0;padding:30px;color:#1f2a33;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;font-size:13px;line-height:1.65}
+    body{margin:0;padding:30px;color:#1f2a33;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.7}
     header{text-align:center;border-bottom:2px solid #167b72;padding-bottom:14px}.org{color:#294858;font-weight:800;letter-spacing:0}h1{margin:7px 0 0;font-size:27px}header p{margin:5px 0 0;color:#687782}
-    h2{margin:24px 0 9px;font-size:17px;border-bottom:1px solid #dfe5e8;padding-bottom:6px}h3{margin:16px 0 7px;font-size:14px}h3 span{float:right;color:#53616c;font-size:12px;font-weight:500}
+    h2{margin:24px 0 9px;font-size:19px;border-bottom:1px solid #dfe5e8;padding-bottom:6px}h3{margin:16px 0 7px;font-size:16px}h3 span{float:right;color:#53616c;font-size:13px;font-weight:500}
     .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;margin:18px 0;padding:13px;border:1px solid #dfe5e8;background:#f8fafb}.meta b{color:#65737d}
     .score{font-size:28px;color:#167b72;font-weight:800}.notice{padding:9px 11px;border-left:4px solid #356b8c;background:#e8f0f6;color:#405f73}
-    table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:7px;border:1px solid #dfe5e8;text-align:left;vertical-align:top}th{background:#f3f5f7}.domain-report{break-inside:avoid}
-    ul{margin:7px 0;padding-left:20px}li{margin:4px 0}.signatures{display:grid;grid-template-columns:repeat(3,1fr);margin-top:22px;border:1px solid #dfe5e8}.signatures div{min-height:80px;padding:12px;border-right:1px solid #dfe5e8}.signatures div:last-child{border-right:0}.foot{margin-top:25px;color:#77838d;font-size:10px}
+    table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:8px;border:1px solid #dfe5e8;text-align:left;vertical-align:top}th{background:#f3f5f7}.domain-report{break-inside:avoid}
+    ol{margin:8px 0;padding-left:25px}li{margin:6px 0;padding-left:3px}li::marker{color:#167b72;font-weight:800}.signatures{display:grid;grid-template-columns:repeat(3,1fr);margin-top:22px;border:1px solid #dfe5e8}.signatures div{min-height:80px;padding:12px;border-right:1px solid #dfe5e8}.signatures div:last-child{border-right:0}.foot{margin-top:25px;color:#77838d;font-size:12px}
     @media print{body{padding:0}.domain-report{break-inside:avoid}}
   </style></head><body>
   <header><div class="org">${escapeHtml(organizationName)}</div><h1>感觉统合功能评估报告</h1><p>学生标识：${escapeHtml(titleName)} · 报告编号：${escapeHtml(htmlReportNumber)} · ${escapeHtml(record.assessmentDate || today())}</p></header>

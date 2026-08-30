@@ -152,6 +152,7 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   const student = data.studentName || data.studentCode || "该学生";
   const setting = data.setting || "当前评估情境";
   const communicationSupport = communicationSupports[data.communicationMode] || communicationSupports["口语沟通"];
+  const goalCommunicationSupport = data.communicationMode || "现有沟通方式";
   const mobilitySupport = mobilitySupports[data.mobility] || mobilitySupports["独立移动"];
   const confidence = confidenceFor(data, coverage, validRows.length, observationSources.length);
 
@@ -173,33 +174,32 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
 
   const strengthTitles = relativeStrengths.map((row) => row.title).join("、") || "尚未形成稳定领域";
   const focusTitles = focusRows.map((row) => row.title).join("、") || "暂未发现显著优先领域";
-  let summary = `至少完成3个领域、每个领域3项后生成个别化综合分析；当前已有${validRows.length}个有效领域。`;
+  let summary = `当前有${validRows.length}个有效领域。至少完成3个领域，且每个领域不少于3项，才能生成综合分析。`;
   if (average !== null) {
-    summary = `${student}在${setting}中的综合功能表现处于“${level}”水平。本次共形成${validRows.length}个有效领域、完成${answeredItems}项观察；相对稳定领域为${strengthTitles}，当前优先支持领域为${focusTitles}。分析可信度为${confidence}，结果用于形成教育康复假设，仍需结合自然情境表现和团队复核。`;
+    summary = `综合表现：${level}。本次完成${validRows.length}个有效领域、${answeredItems}项观察。相对优势：${strengthTitles}。优先支持：${focusTitles}。结果可信度：${confidence}，请结合课堂、家庭等自然情境和团队复核后使用。`;
   }
 
   const basis = [
-    `学生情况：年龄${data.age || "未填写"}；${data.primaryNeed || "主要发展需要未填写"}；沟通方式为${data.communicationMode || "未填写"}；移动能力为${data.mobility || "未填写"}。`,
+    `基本情况：年龄${data.age || "未填写"}；主要发展需要为${data.primaryNeed || "未填写"}；沟通方式为${data.communicationMode || "未填写"}；移动能力为${data.mobility || "未填写"}。`,
     observationSources.length
-      ? `观察来源：${observationSources.join("、")}；主要评估情境为${setting}；资料可信度为${confidence}（${data.cooperation || "配合情况未填写"}）。`
-      : `观察来源尚未勾选；当前仅按${setting}中的记录解释，资料可信度为${confidence}。`,
-    `优先级综合考虑领域均分、参与影响、当前支持等级和关键项目最低表现，不仅依据综合分排序。`,
-    `目标以当前基线向上提升1级为原则，并匹配${data.communicationMode || "当前沟通方式"}和${data.mobility || "当前移动能力"}。`
+      ? `观察情况：来源为${observationSources.join("、")}；情境为${setting}；配合情况为${data.cooperation || "未填写"}；结果可信度为${confidence}。`
+      : `观察情况：尚未选择观察来源；当前仅依据${setting}中的记录，结果可信度为${confidence}。`,
+    "支持优先级：综合参考领域均分、参与影响、当前支持等级和最低项目表现。",
+    `目标设定：以当前能力为起点，8周内先提高1级，并适配${data.communicationMode || "当前沟通方式"}和${data.mobility || "当前移动能力"}。`
   ];
-  if (data.background) basis.push("已记录家庭或教师的背景关切，团队应据此选择有意义的目标活动和强化方式。");
-  if (rows.some((row) => compactText(row.note))) basis.push("部分领域含具体观察记录，复核结果时应优先核对任务、提示、持续时间和跨情境差异。");
+  if (data.background) basis.push("目标内容已结合家庭或教师关切，并优先选择有实际意义的活动。");
+  if (rows.some((row) => compactText(row.note))) basis.push("复核时需对照原观察记录，核对任务、提示、持续时间和不同情境表现。");
 
   const strengths = relativeStrengths.map((row) => {
     const items = bestItemsFor(row).map((item) => `${item.label}（${item.score}级）`);
-    const status = row.average >= 4 && row.impact <= 1 ? "表现较稳定" : "为当前相对优势";
-    return `${row.title}（${row.average.toFixed(1)}分，${impactLabels[row.impact]}）${status}：${items.join("；") || "已完成项目整体相对稳定"}。可作为${leverageByDomain[row.id] || "自然活动参与"}的支持基础。`;
+    return `${row.title}（${row.average.toFixed(1)}分，${impactLabels[row.impact]}）：较稳定项目为${items.join("；") || "已评项目"}。可用于支持${leverageByDomain[row.id] || "自然活动参与"}。`;
   });
 
   const needs = focusRows.map((row) => {
     const lowest = row.itemScores.filter((item) => item.score !== null).sort((a, b) => a.score - b.score).slice(0, 2);
     const detail = lowest.map((item) => `${item.label}（${item.score}级）`).join("；");
-    const noteStatus = compactText(row.note) ? "该领域已有具体观察记录，目标实施前需结合原记录核对诱因与有效支持。" : "建议补充具体任务、提示次数和恢复时间记录。";
-    return `${row.title}：${priorityReason(row, impactLabels)}。优先关注${detail || "已记录的低分项目"}；${noteStatus}`;
+    const noteStatus = compactText(row.note) ? "实施前请核对原记录中的诱因和有效支持。" : "建议补记任务、提示次数和恢复时间。";
+    return `${row.title}：优先原因为${priorityReason(row, impactLabels)}。重点项目：${detail || "已记录的低分项目"}。${noteStatus}`;
   });
 
   const naturalContexts = observationSources.length >= 2
@@ -210,40 +210,42 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     const targetItem = targetItemFor(row);
     if (!targetItem) return;
     const targetScore = Math.min(5, targetItem.score + 1);
-    goals.push(`8周内，${student}在${naturalContexts}中，借助${communicationSupport}，能${targetItem.label}；在不高于“${scoreLevels[targetScore].label}”的支持下，连续3次观察达到${targetScore}级（${scoreLevels[targetScore].range}），并记录成功比例、提示次数和恢复时间。`);
+    goals.push(`8周内，在${naturalContexts}中，${student}借助${goalCommunicationSupport}完成“${targetItem.label}”。所需支持不超过“${scoreLevels[targetScore].label}”，连续3次观察达到${targetScore}级；每次记录成功率、提示次数和恢复时间。`);
   });
   if (!goals.length && validRows.length) {
-    goals.push(`8周内，${student}在至少2个自然情境中维持当前相对稳定能力，并将已掌握策略迁移到新的人员、材料或活动；连续3次记录达到4级或以上。`);
+    goals.push(`8周内，${student}在至少2个自然情境中保持现有能力，并将已掌握策略用于新的人员、材料或活动；连续3次记录达到4级或以上。`);
   }
 
   const strategies = [];
   focusRows.forEach((row) => {
     const targetItem = targetItemFor(row);
     if (targetItem) {
-      strategies.push(`${row.title}首要任务：围绕“${targetItem.label}”，在${setting}从当前${targetItem.score}级表现和“${row.support || "部分提示"}”支持起步；每次只减少一种提示，并比较参与质量与恢复时间。`);
+      strategies.push(`${row.title}训练：围绕“${targetItem.label}”，从当前${targetItem.score}级和“${row.support || "部分提示"}”开始；每次只减少一种提示，并观察参与质量和恢复时间。`);
     }
-    const domainStrategy = list(row.strategies)[0];
-    if (domainStrategy) strategies.push(`${row.title}情境支持：${domainStrategy}`);
   });
-  strategies.push(`沟通支持：使用${communicationSupport}，并让学生能够表达继续、停止、帮助和休息。`);
-  strategies.push(`移动与体位：${mobilitySupport}。`);
-  if (data.background) strategies.push("任务选择：优先把已记录的兴趣、家庭关切和课堂重点嵌入真实活动，使用符合年龄尊严且匹配当前功能水平的材料，避免只练习脱离生活的感觉刺激。");
-  strategies.push("团队监测：教师、治疗师和家庭使用同一目标与提示层级，每周汇总成功比例、提示次数、参与时长和恢复时间，4至8周后按相近条件复评。");
+  focusRows.slice(0, 2).forEach((row) => {
+    const domainStrategy = list(row.strategies)[0];
+    if (domainStrategy) strategies.push(`${row.title}环境支持：${domainStrategy}`);
+  });
+  strategies.push(`沟通支持：使用${communicationSupport}；明确教会学生表达“继续、停止、帮助、休息”。`);
+  strategies.push(`体位与移动：${mobilitySupport}。`);
+  if (data.background) strategies.push("活动选择：将学生兴趣、家庭关切和课堂任务结合起来，优先练习真实生活活动，避免脱离生活情境的单一感觉刺激。");
+  strategies.push("进展记录：团队统一目标和提示等级；每周记录成功率、提示次数、参与时长和恢复时间，4至8周后复评。");
 
   const alerts = [];
-  if (confidence === "有限") alerts.push("当前资料或配合度不足，自动结果仅可作为初步假设，不宜直接据此确定高风险活动或长期方案。");
-  else if (confidence === "中等") alerts.push("当前结果受观察情境或状态波动影响，建议补充另一自然情境后再确认优先顺序。");
-  if (data.medicalPrecautions) alerts.push("已填写医疗与安全注意事项：开展运动、口腔或进食活动前，须由具备相应资质的专业人员核对禁忌与风险。");
-  if (focusRows.some((row) => row.id === "vestibular")) alerts.push("前庭活动应允许学生主动停止，并监测面色、眼神、眩晕、恶心和活动后恢复；异常时立即停止并转介。");
-  if (focusRows.some((row) => row.id === "oral")) alerts.push("口腔与进食建议不替代吞咽评估；出现呛咳、湿嗓、呼吸改变或反复感染风险时，应先完成医学或吞咽专业评估。");
-  alerts.push("本结果基于功能性观察自动整理，不是标准化常模量表，不能单独用于医学诊断、教育安置或服务资格判定。");
+  if (confidence === "有限") alerts.push("资料或配合度不足。本次自动结果仅供初步参考，不应直接用于高风险活动或长期方案。");
+  else if (confidence === "中等") alerts.push("结果可能受观察情境或状态波动影响。建议补充另一自然情境后，再确认支持顺序。");
+  if (data.medicalPrecautions) alerts.push("已填写医疗与安全注意事项。开展运动、口腔或进食活动前，须由具备相应资质的专业人员核对风险。");
+  if (focusRows.some((row) => row.id === "vestibular")) alerts.push("前庭活动中应允许学生主动停止，并观察面色、眼神、眩晕、恶心和活动后恢复；出现异常应立即停止并转介。");
+  if (focusRows.some((row) => row.id === "oral")) alerts.push("本报告中的口腔与进食建议不能替代吞咽评估。若出现呛咳、湿嗓或呼吸改变，应先转介医学或吞咽专业评估。");
+  alerts.push("本结果来自功能性观察，不是标准化常模量表，不能单独用于医学诊断、教育安置或服务资格判定。");
 
-  if (!strengths.length) strengths.push("完成更多领域后，将显示学生当前相对稳定的能力和可用于带动活动参与的资源。");
-  if (!needs.length) needs.push("当前未发现显著优先领域；建议继续观察能力在不同人员、材料和自然情境中的稳定性与迁移。");
-  if (!goals.length) goals.push("完成至少3个领域后，将根据具体基线、参与影响和支持等级生成可测量的8周阶段目标。");
+  if (!strengths.length) strengths.push("完成更多领域后，将显示学生较稳定的能力和可利用的支持资源。");
+  if (!needs.length) needs.push("当前未发现明显的优先支持领域。建议继续观察学生在不同人员、材料和自然情境中的表现。");
+  if (!goals.length) goals.push("完成至少3个领域后，系统将根据当前能力、参与影响和支持等级生成8周阶段目标。");
 
   return {
-    methodVersion: "individualized-functional-v3",
+    methodVersion: "individualized-functional-v4",
     average,
     coverage,
     answeredItems,
@@ -258,7 +260,7 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     strengths,
     needs,
     goals,
-    strategies: strategies.slice(0, 12),
+    strategies: strategies.slice(0, 10),
     priorities: focusRows,
     domainScores: Object.fromEntries(validRows.map((row) => [row.id, {
       title: row.title,
