@@ -161,7 +161,7 @@ async function handleCreateReportShare(request, env) {
     ) VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
   `).bind(token, filename, DOCX_MIME, report.encoded, sessionId, expiresAt).run();
 
-  const shareUrl = new URL(`/shared-report.html?token=${token}`, request.url).toString();
+  const shareUrl = new URL(`/shared-report?token=${token}`, request.url).toString();
   return json(request, env, { ok: true, shareUrl, expiresAt });
 }
 
