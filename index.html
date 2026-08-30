@@ -32,9 +32,9 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         <span>新建</span>
       </button>
-      <button class="button primary" id="saveRecordBtn" type="button">
+      <button class="button primary" id="saveRecordBtn" type="button" title="立即保存并尝试同步">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4Zm4 0v6h7V4M8 20v-7h8v7"/></svg>
-        <span>保存评估</span>
+        <span>立即保存</span>
       </button>
       <button class="icon-button" id="printBtn" type="button" title="打印报告" aria-label="打印报告">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z"/></svg>
@@ -67,7 +67,7 @@
         </label>
 
         <div class="local-status">
-          <span><i class="status-light"></i><b id="draftState">自动暂存</b></span>
+          <span><i class="status-light"></i><b id="draftState">自动保存</b></span>
           <span id="lastSavedText">尚未保存</span>
         </div>
 
@@ -296,8 +296,8 @@
             <svg viewBox="0 0 24 24"><path d="M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3Zm0 0v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
           </div>
           <div>
-            <h3>云端数据同步</h3>
-            <p id="cloudDescription">当前仅保存在本机浏览器</p>
+            <h3>云端自动同步</h3>
+            <p id="cloudDescription">自动保存于本机；云同步未启用</p>
           </div>
           <label class="switch" title="启用或停用云端同步">
             <input id="cloudSyncToggle" type="checkbox">
@@ -305,7 +305,7 @@
           </label>
         </div>
         <div class="sync-status" id="syncStatus">
-          <i></i><span>未启用 · 数据不会上传</span>
+          <i></i><span>未启用 · 仅自动保存在本机</span>
         </div>
         <button class="text-button manage-privacy" id="privacyManageBtn" type="button">隐私与同步设置</button>
       </section>
@@ -389,7 +389,7 @@
     <div class="modal-body">
       <div class="privacy-principles">
         <div><b>访问统计匿名</b><span>不保存IP地址，仅统计会话、时间、页面和设备类别。</span></div>
-        <div><b>评估同步需授权</b><span>只有启用同步后保存的评估才会发送到 Cloudflare 数据库。</span></div>
+        <div><b>自动同步需授权</b><span>启用后，满足条件的评估更改会自动发送到 Cloudflare 数据库。</span></div>
         <div><b>本地记录保留</b><span>无论是否同步，当前浏览器仍保存一份可导出的本地记录。</span></div>
       </div>
 

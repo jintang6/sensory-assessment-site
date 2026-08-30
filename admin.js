@@ -14,6 +14,7 @@ const recordDialog = document.getElementById("recordDialog");
 let adminKey = sessionStorage.getItem(SESSION_KEY) || "";
 let dashboardData = null;
 let selectedRecordId = null;
+let selectedRecord = null;
 let refreshTimer = null;
 let toastTimer = null;
 
@@ -212,6 +213,8 @@ function renderRecordTable() {
 
 async function openRecord(id) {
   selectedRecordId = id;
+  selectedRecord = null;
+  document.getElementById("exportRecordReportBtn").disabled = true;
   document.getElementById("recordDialogTitle").textContent = "正在加载…";
   document.getElementById("recordDetail").innerHTML = '<div class="chart-empty">正在读取评估详情…</div>';
   recordDialog.showModal();
@@ -224,6 +227,8 @@ async function openRecord(id) {
 }
 
 function renderRecordDetail(row) {
+  selectedRecord = row;
+  document.getElementById("exportRecordReportBtn").disabled = false;
   const record = row.assessment || {};
   const analysis = row.analysis || {};
   const title = row.student_label || record.studentName || record.studentCode || "评估记录";
@@ -247,10 +252,80 @@ function renderRecordDetail(row) {
     <section class="detail-section"><h3>相对优势</h3>${list(analysis.strengths)}</section>
     <section class="detail-section"><h3>优先支持需要</h3>${list(analysis.needs)}</section>
     <section class="detail-section"><h3>8周阶段目标</h3>${list(analysis.goals)}</section>
+    <section class="detail-section"><h3>康复与情境支持</h3>${list(analysis.strategies)}</section>
     <section class="detail-section"><h3>领域分数</h3>
       <table class="detail-domain-table"><thead><tr><th>领域</th><th>均分</th><th>有效项目</th><th>参与影响</th></tr></thead><tbody>${domainRows || '<tr><td colspan="4">暂无有效领域</td></tr>'}</tbody></table>
     </section>
   `;
+}
+
+function safeFilename(value) {
+  return String(value || "未命名学生").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 48);
+}
+
+function downloadFile(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildRecordReportHtml(row) {
+  const record = row.assessment || {};
+  const analysis = row.analysis || {};
+  const title = row.student_label || record.studentName || record.studentCode || "评估记录";
+  const privacyMode = Number(row.is_deidentified) === 1 ? "去标识化记录" : "完整记录";
+  const impactLabels = ["无明显影响", "轻度影响", "中度影响", "显著影响"];
+  const domainRows = Object.entries(analysis.domainScores || {}).map(([id, domain]) => {
+    const detail = record.domains?.[id] || {};
+    return `<tr>
+      <td>${escapeHtml(domain.title || id)}</td>
+      <td>${Number(domain.score).toFixed(1)}</td>
+      <td>${number(domain.answered)}项</td>
+      <td>${escapeHtml(impactLabels[Number(domain.impact) || 0])}</td>
+      <td>${escapeHtml(detail.support || "未记录")}</td>
+      <td>${escapeHtml(detail.note || "—")}</td>
+    </tr>`;
+  }).join("");
+  const reportList = (items) => `<ul>${(items || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>暂无</li>"}</ul>`;
+
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}-感觉统合功能评估报告</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;padding:30px;color:#1f2a33;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;font-size:13px;line-height:1.65}header{padding-bottom:14px;border-bottom:2px solid #167b72}h1{margin:0;font-size:25px;letter-spacing:0}header p{margin:5px 0 0;color:#687782}h2{margin:24px 0 9px;padding-bottom:6px;border-bottom:1px solid #dfe5e8;font-size:17px;letter-spacing:0}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;margin:18px 0;padding:13px;border:1px solid #dfe5e8;background:#f8fafb}.meta b{color:#65737d}.score{color:#167b72;font-size:28px;font-weight:800}.notice{padding:9px 11px;border-left:4px solid #356b8c;background:#e8f0f6;color:#405f73}table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:7px;border:1px solid #dfe5e8;text-align:left;vertical-align:top}th{background:#f3f5f7}ul{margin:7px 0;padding-left:20px}li{margin:4px 0}.foot{margin-top:25px;color:#77838d;font-size:10px}.print-control{position:fixed;right:20px;top:20px;padding:9px 13px;border:0;border-radius:7px;background:#167b72;color:#fff;font:inherit;font-weight:700;cursor:pointer}@media(max-width:700px){body{padding:18px}.meta{grid-template-columns:1fr}table{font-size:9px}}@media print{body{padding:0}.print-control{display:none}thead{display:table-header-group}tr,h2{break-inside:avoid}}
+  </style></head><body>
+  <button class="print-control" onclick="window.print()">打印 / 保存为 PDF</button>
+  <header><h1>${escapeHtml(title)} 感觉统合功能评估报告</h1><p>学校与康复场景功能性观察 · ${escapeHtml(record.assessmentDate || "未填写日期")}</p></header>
+  <p class="notice">本报告由已授权同步的功能性观察数据自动整理，不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。</p>
+  <div class="meta">
+    <div><b>学生标识：</b>${escapeHtml(title)}</div><div><b>学生编号：</b>${escapeHtml(record.studentCode || "未填写")}</div><div><b>隐私模式：</b>${privacyMode}</div>
+    <div><b>年龄：</b>${escapeHtml(record.age || "未填写")}</div><div><b>性别：</b>${escapeHtml(record.gender || "未填写")}</div><div><b>班级：</b>${escapeHtml(record.className || "未填写")}</div>
+    <div><b>主要发展需要：</b>${escapeHtml(record.primaryNeed || "未填写")}</div><div><b>评估人：</b>${escapeHtml(record.evaluator || "未填写")}</div><div><b>主要情境：</b>${escapeHtml(record.setting || "未填写")}</div>
+    <div><b>综合分：</b><span class="score">${analysis.average == null ? "—" : Number(analysis.average).toFixed(1)}</span></div><div><b>完成度：</b>${number(analysis.coverage)}%</div><div><b>总体等级：</b>${escapeHtml(analysis.level || "尚未形成")}</div>
+  </div>
+  <h2>背景、安全与总体摘要</h2><p><b>主要关切：</b>${escapeHtml(record.background || "未填写或已去标识化")}</p><p><b>医疗与安全：</b>${escapeHtml(record.medicalPrecautions || "未填写或已去标识化")}</p><p>${escapeHtml(analysis.summary || "暂无")}</p>
+  <h2>相对优势</h2>${reportList(analysis.strengths)}
+  <h2>优先支持需要</h2>${reportList(analysis.needs)}
+  <h2>8周阶段目标</h2>${reportList(analysis.goals)}
+  <h2>康复、课堂与生活支持</h2>${reportList(analysis.strategies)}
+  <h2>领域表现与观察记录</h2><table><thead><tr><th>领域</th><th>均分</th><th>有效项目</th><th>参与影响</th><th>当前支持</th><th>观察记录</th></tr></thead><tbody>${domainRows || '<tr><td colspan="6">暂无有效领域</td></tr>'}</tbody></table>
+  <p class="foot">评分：1全程协助，2大量协助，3部分提示，4少量提示，5独立稳定；每个领域至少完成3项才形成领域分。报告生成时间：${escapeHtml(formatDateTime(new Date().toISOString()))}，云端最后同步：${escapeHtml(formatDateTime(row.updated_at))}。</p>
+  </body></html>`;
+}
+
+function exportSelectedRecordReport() {
+  if (!selectedRecord) {
+    showToast("请先打开一份评估记录。 ");
+    return;
+  }
+  const record = selectedRecord.assessment || {};
+  const title = selectedRecord.student_label || record.studentName || record.studentCode || "评估记录";
+  downloadFile(`${safeFilename(title)}-感觉统合功能评估报告.html`, buildRecordReportHtml(selectedRecord), "text/html;charset=utf-8");
+  showToast("评估报告已导出，可打开后打印或保存为 PDF。 ");
 }
 
 async function deleteSelectedRecord() {
@@ -261,6 +336,7 @@ async function deleteSelectedRecord() {
     await api(`/api/admin/records/${encodeURIComponent(selectedRecordId)}`, { method: "DELETE" });
     recordDialog.close();
     selectedRecordId = null;
+    selectedRecord = null;
     await refreshDashboard(false);
     showToast("云端评估记录已删除。 ");
   } catch (error) {
@@ -301,6 +377,7 @@ function attachEvents() {
   });
   document.querySelectorAll(".close-record-dialog").forEach((button) => button.addEventListener("click", () => recordDialog.close()));
   document.getElementById("deleteCloudRecordBtn").addEventListener("click", deleteSelectedRecord);
+  document.getElementById("exportRecordReportBtn").addEventListener("click", exportSelectedRecordReport);
   recordDialog.addEventListener("click", (event) => {
     if (event.target === recordDialog) recordDialog.close();
   });

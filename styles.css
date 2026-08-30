@@ -1344,6 +1344,10 @@ svg {
   background: var(--green);
 }
 
+.sync-status.pending i {
+  background: var(--amber);
+}
+
 .sync-status.error i {
   background: var(--coral);
 }

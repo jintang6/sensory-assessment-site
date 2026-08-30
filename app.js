@@ -3,6 +3,9 @@ const DRAFT_KEY = "sensoryAssessmentDraft.v2";
 const LEGACY_STORAGE_KEY = "sensoryIntegrationRecords.v1";
 const LEGACY_DRAFT_KEY = "sensoryIntegrationDraft.v1";
 const CLOUD_SETTINGS_KEY = "sensoryCloudSettings.v1";
+const AUTO_SAVE_DELAY = 650;
+const AUTO_SYNC_IDLE_DELAY = 4_000;
+const MIN_CLOUD_SYNC_INTERVAL = 15_000;
 const API_ORIGIN = location.hostname === "sensory-assessment-site.pages.dev" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
   ? ""
   : "https://sensory-assessment-site.pages.dev";
@@ -266,9 +269,12 @@ const methodDialog = document.getElementById("methodDialog");
 let records = loadRecords();
 let activeId = null;
 let draftTimer = null;
+let cloudSyncTimer = null;
 let toastTimer = null;
 let cloudSettings = loadCloudSettings();
 let lastAnalysis = null;
+let lastCloudSyncAt = 0;
+let lastSyncedSignature = "";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -708,20 +714,71 @@ function refreshAnalysis() {
   renderList("needList", result.needs);
   renderList("goalList", result.goals);
   renderList("strategyList", result.strategies);
-  queueDraftSave(data);
+  queueDraftSave(data, result);
 }
 
 function renderList(id, values) {
   document.getElementById(id).innerHTML = values.map((value) => `<li>${escapeHtml(value)}</li>`).join("");
 }
 
-function queueDraftSave(data) {
+function saveRecordLocally(data, { render = true } = {}) {
+  if (!data.studentName && !data.studentCode) return null;
+  const now = new Date().toISOString();
+  const existing = records.find((record) => record.id === (activeId || data.id));
+  if (!activeId) activeId = data.id || uid();
+  data.id = activeId;
+  data.createdAt = existing?.createdAt || data.createdAt || now;
+  data.updatedAt = now;
+
+  const index = records.findIndex((record) => record.id === activeId);
+  if (index >= 0) records[index] = data;
+  else records.push(data);
+  if (render) persistRecords();
+  else localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  document.getElementById("currentRecordTitle").textContent = data.studentName || data.studentCode;
+  document.getElementById("lastSavedText").textContent = `更新于 ${formatDateTime(now)}`;
+  return data;
+}
+
+function syncSignature(data, analysis) {
+  const { createdAt, updatedAt, ...stableRecord } = data;
+  return JSON.stringify({ deidentified: cloudSettings.deidentified, record: stableRecord, analysis });
+}
+
+function queueCloudSync(data, analysis, { immediate = false } = {}) {
+  clearTimeout(cloudSyncTimer);
+  if (!cloudSettings.enabled) return;
+  if (!data.studentName && !data.studentCode) {
+    updateSyncStatus("pending", "填写姓名或学生编号后自动上传");
+    return;
+  }
+  if (cloudSettings.deidentified && !data.studentCode) {
+    updateSyncStatus("pending", "已自动保存本机 · 填写学生编号后上传");
+    return;
+  }
+  if (analysis.validDomainCount < 3) {
+    updateSyncStatus("pending", "已自动保存本机 · 完成3个有效领域后上传");
+    return;
+  }
+
+  const signature = syncSignature(data, analysis);
+  if (signature === lastSyncedSignature) return;
+  const elapsed = Date.now() - lastCloudSyncAt;
+  const delay = immediate ? 0 : Math.max(AUTO_SYNC_IDLE_DELAY, MIN_CLOUD_SYNC_INTERVAL - elapsed);
+  updateSyncStatus("enabled", delay ? "更改已自动保存 · 等待自动上传" : "正在安全上传…");
+  cloudSyncTimer = setTimeout(() => syncRecord(data, analysis, { silent: true, signature }), delay);
+}
+
+function queueDraftSave(data, analysis) {
   clearTimeout(draftTimer);
-  document.getElementById("draftState").textContent = "暂存中";
+  document.getElementById("draftState").textContent = "正在自动保存";
   draftTimer = setTimeout(() => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
-    document.getElementById("draftState").textContent = "已自动暂存";
-  }, 320);
+    const saved = saveRecordLocally(data);
+    document.getElementById("draftState").textContent = saved ? "已自动保存" : "草稿已自动暂存";
+    if (saved) queueCloudSync(saved, analysis);
+  }, AUTO_SAVE_DELAY);
 }
 
 function persistRecords() {
@@ -762,33 +819,31 @@ async function saveCurrentRecord() {
     return;
   }
 
-  const now = new Date().toISOString();
-  const existing = records.find((record) => record.id === activeId);
-  if (!activeId) activeId = uid();
-  data.id = activeId;
-  data.createdAt = existing?.createdAt || now;
-  data.updatedAt = now;
-
-  const index = records.findIndex((record) => record.id === activeId);
-  if (index >= 0) records[index] = data;
-  else records.push(data);
-  persistRecords();
-  localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
-  document.getElementById("currentRecordTitle").textContent = data.studentName || data.studentCode;
-  document.getElementById("lastSavedText").textContent = `更新于 ${formatDateTime(now)}`;
+  clearTimeout(draftTimer);
+  const saved = saveRecordLocally(data);
+  document.getElementById("draftState").textContent = "已自动保存";
   showToast("评估已保存到本机浏览器。 ");
 
-  if (cloudSettings.enabled) await syncRecord(data, analyze(data));
+  if (cloudSettings.enabled) {
+    clearTimeout(cloudSyncTimer);
+    await syncRecord(saved, analyze(saved));
+  }
 }
 
-async function syncRecord(data, analysis) {
+async function syncRecord(data, analysis, { silent = false, signature = syncSignature(data, analysis), keepalive = false } = {}) {
+  if (!cloudSettings.enabled) return;
+  if (silent && signature === lastSyncedSignature) return;
+  if (!data.studentName && !data.studentCode) {
+    updateSyncStatus("pending", "填写姓名或学生编号后自动上传");
+    return;
+  }
   if (cloudSettings.deidentified && !data.studentCode) {
-    updateSyncStatus("error", "去标识化同步需要填写学生编号");
-    showToast("本机已保存；填写学生编号后才能去标识化同步。 ");
+    updateSyncStatus("pending", "已自动保存本机 · 填写学生编号后上传");
+    if (!silent) showToast("本机已保存；填写学生编号后才能去标识化同步。 ");
     return;
   }
   if (analysis.validDomainCount < 3) {
-    updateSyncStatus("error", "至少完成3个有效领域后同步");
+    updateSyncStatus("pending", "已自动保存本机 · 完成3个有效领域后上传");
     return;
   }
 
@@ -803,15 +858,22 @@ async function syncRecord(data, analysis) {
         sessionId: getSessionId(),
         record: data,
         analysis
-      })
+      }),
+      keepalive
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "同步失败");
-    updateSyncStatus("enabled", `${cloudSettings.deidentified ? "去标识化" : "完整"}记录已同步 · ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
-    showToast("云端同步完成。 ");
+    lastCloudSyncAt = Date.now();
+    lastSyncedSignature = signature;
+    updateSyncStatus("enabled", `${cloudSettings.deidentified ? "去标识化" : "完整"}记录已自动上传 · ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
+    if (!silent) showToast("云端同步完成。 ");
   } catch (error) {
     updateSyncStatus("error", error.message || "云端暂时不可用");
-    showToast("本机保存成功，但云端同步未完成。 ");
+    if (!silent) showToast("本机保存成功，但云端同步未完成。 ");
+    if (silent && !keepalive && cloudSettings.enabled) {
+      clearTimeout(cloudSyncTimer);
+      cloudSyncTimer = setTimeout(() => syncRecord(data, analysis, { silent: true, signature }), 30_000);
+    }
   }
 }
 
@@ -989,12 +1051,12 @@ function refreshCloudUi() {
   cloudToggle.checked = cloudSettings.enabled;
   const description = document.getElementById("cloudDescription");
   if (!cloudSettings.enabled) {
-    description.textContent = "当前仅保存在本机浏览器";
-    updateSyncStatus("", "未启用 · 评估数据不会上传");
+    description.textContent = "自动保存于本机；云同步未启用";
+    updateSyncStatus("", "未启用 · 仅自动保存在本机");
     return;
   }
-  description.textContent = cloudSettings.deidentified ? "已启用去标识化同步" : "已启用完整记录同步";
-  updateSyncStatus("enabled", `${cloudSettings.deidentified ? "去标识化" : "完整"}同步已启用`);
+  description.textContent = cloudSettings.deidentified ? "已启用去标识化自动同步" : "已启用完整记录自动同步";
+  updateSyncStatus("enabled", `${cloudSettings.deidentified ? "去标识化" : "完整"}同步已启用 · 更改后自动上传`);
 }
 
 function openConsentDialog() {
@@ -1096,6 +1158,7 @@ function attachEvents() {
       cloudToggle.checked = cloudSettings.enabled;
       openConsentDialog();
     } else {
+      clearTimeout(cloudSyncTimer);
       cloudSettings.enabled = false;
       persistCloudSettings();
       refreshCloudUi();
@@ -1112,7 +1175,11 @@ function attachEvents() {
     persistCloudSettings();
     consentDialog.close();
     refreshCloudUi();
-    showToast(`${cloudSettings.deidentified ? "去标识化" : "完整记录"}同步已启用。`);
+    const data = collectData();
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    const saved = saveRecordLocally(data);
+    queueCloudSync(saved || data, analyze(saved || data), { immediate: true });
+    showToast(`${cloudSettings.deidentified ? "去标识化" : "完整记录"}自动同步已启用。`);
   });
 
   methodDialog.addEventListener("click", (event) => {
@@ -1124,6 +1191,17 @@ function attachEvents() {
 
   const deleteButton = document.getElementById("deleteRecordBtn");
   if (deleteButton) deleteButton.addEventListener("click", deleteCurrentRecord);
+
+  window.addEventListener("pagehide", () => {
+    clearTimeout(draftTimer);
+    const data = collectData();
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    const saved = saveRecordLocally(data, { render: false });
+    if (saved && cloudSettings.enabled) {
+      clearTimeout(cloudSyncTimer);
+      syncRecord(saved, analyze(saved), { silent: true, keepalive: true });
+    }
+  });
 }
 
 function init() {

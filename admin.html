@@ -146,7 +146,13 @@
     <div class="modal-body record-detail" id="recordDetail"></div>
     <div class="record-dialog-actions">
       <button class="button danger" id="deleteCloudRecordBtn" type="button">删除此云端记录</button>
-      <button class="button quiet close-record-dialog" type="button">关闭</button>
+      <div class="record-action-group">
+        <button class="button primary" id="exportRecordReportBtn" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+          导出报告
+        </button>
+        <button class="button quiet close-record-dialog" type="button">关闭</button>
+      </div>
     </div>
   </dialog>
 
