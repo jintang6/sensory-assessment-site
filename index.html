@@ -3,1671 +3,422 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>感觉统合评估与康复目标工作台</title>
-  <meta name="description" content="用于记录特殊儿童感觉统合评估数据，并自动生成优势、不足与康复目标。">
-  <style>
-    *, *::before, *::after {
-      box-sizing: border-box;
-    }
-
-    :root {
-      --bg: #f5f8f4;
-      --paper: #ffffff;
-      --paper-strong: #fbfdf9;
-      --ink: #1d2926;
-      --muted: #65736f;
-      --soft: #edf3ee;
-      --line: #dce7df;
-      --line-strong: #bfd1c7;
-      --teal: #14796d;
-      --teal-strong: #0f5f56;
-      --teal-soft: #dff2ed;
-      --amber: #c46b2a;
-      --amber-soft: #fff0df;
-      --rose: #b94f62;
-      --rose-soft: #fae7eb;
-      --blue: #315d85;
-      --blue-soft: #e3edf7;
-      --shadow: 0 16px 42px rgba(31, 50, 43, .08);
-      --radius: 8px;
-      --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-    }
-
-    html {
-      min-height: 100%;
-      background: var(--bg);
-    }
-
-    body {
-      min-height: 100vh;
-      margin: 0;
-      color: var(--ink);
-      background:
-        linear-gradient(180deg, rgba(20, 121, 109, .07), rgba(245, 248, 244, 0) 280px),
-        var(--bg);
-      font-family: var(--font);
-      font-size: 15px;
-      line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-    }
-
-    button,
-    input,
-    textarea,
-    select {
-      font: inherit;
-    }
-
-    button {
-      border: 0;
-    }
-
-    svg {
-      display: block;
-    }
-
-    a {
-      color: inherit;
-    }
-
-    :focus-visible {
-      outline: 3px solid rgba(196, 107, 42, .35);
-      outline-offset: 2px;
-    }
-
-    .app-shell {
-      width: min(100%, 1480px);
-      margin: 0 auto;
-      padding: 22px clamp(16px, 2.8vw, 32px) 36px;
-    }
-
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      display: grid;
-      grid-template-columns: minmax(260px, 1fr) auto;
-      gap: 18px;
-      align-items: center;
-      padding: 14px 0 18px;
-      background: linear-gradient(180deg, var(--bg) 72%, rgba(245, 248, 244, 0));
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 0;
-    }
-
-    .brand-mark {
-      display: grid;
-      place-items: center;
-      width: 44px;
-      height: 44px;
-      flex: 0 0 auto;
-      border: 1px solid rgba(20, 121, 109, .2);
-      border-radius: 8px;
-      background: var(--paper);
-      box-shadow: 0 8px 22px rgba(20, 121, 109, .08);
-      color: var(--teal);
-    }
-
-    .brand h1 {
-      margin: 0;
-      font-size: clamp(20px, 2.2vw, 28px);
-      font-weight: 760;
-      line-height: 1.15;
-      letter-spacing: 0;
-    }
-
-    .brand p {
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .top-actions,
-    .button-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 7px;
-      min-height: 38px;
-      padding: 0 13px;
-      border: 1px solid transparent;
-      border-radius: 8px;
-      background: var(--teal);
-      color: #fff;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background .16s ease, border-color .16s ease, transform .12s ease, box-shadow .16s ease;
-      white-space: nowrap;
-    }
-
-    .btn:hover {
-      background: var(--teal-strong);
-      box-shadow: 0 8px 18px rgba(20, 121, 109, .18);
-    }
-
-    .btn:active {
-      transform: translateY(1px);
-    }
-
-    .btn.secondary {
-      border-color: var(--line-strong);
-      background: var(--paper);
-      color: var(--ink);
-      box-shadow: none;
-    }
-
-    .btn.secondary:hover {
-      border-color: var(--teal);
-      background: #f9fcfa;
-    }
-
-    .btn.warning {
-      border-color: rgba(185, 79, 98, .22);
-      background: var(--rose-soft);
-      color: #84283a;
-    }
-
-    .btn.warning:hover {
-      border-color: rgba(185, 79, 98, .42);
-      background: #f7dbe1;
-      box-shadow: none;
-    }
-
-    .btn svg {
-      width: 17px;
-      height: 17px;
-      flex: none;
-    }
-
-    .workspace {
-      display: grid;
-      grid-template-columns: minmax(250px, 300px) minmax(460px, 1fr) minmax(330px, 410px);
-      gap: 18px;
-      align-items: start;
-    }
-
-    .panel {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(255, 255, 255, .88);
-      box-shadow: var(--shadow);
-    }
-
-    .panel-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 16px 16px 12px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .panel-title {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 760;
-      line-height: 1.25;
-    }
-
-    .panel-note {
-      margin: 3px 0 0;
-      color: var(--muted);
-      font-size: 12.5px;
-    }
-
-    .memory-panel,
-    .result-panel {
-      position: sticky;
-      top: 92px;
-      max-height: calc(100vh - 112px);
-      overflow: auto;
-    }
-
-    .memory-tools {
-      display: grid;
-      gap: 10px;
-      padding: 14px 14px 12px;
-    }
-
-    .field,
-    .form-field {
-      display: grid;
-      gap: 6px;
-    }
-
-    .field label,
-    .form-field label,
-    .field-label {
-      color: #33423e;
-      font-size: 12.5px;
-      font-weight: 720;
-    }
-
-    .input,
-    .textarea,
-    .select {
-      width: 100%;
-      min-height: 38px;
-      border: 1px solid var(--line-strong);
-      border-radius: 8px;
-      background: var(--paper);
-      color: var(--ink);
-      padding: 8px 10px;
-      transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
-    }
-
-    .textarea {
-      min-height: 76px;
-      resize: vertical;
-    }
-
-    .input:focus,
-    .textarea:focus,
-    .select:focus {
-      border-color: var(--teal);
-      box-shadow: 0 0 0 3px rgba(20, 121, 109, .12);
-      outline: none;
-    }
-
-    .memory-status {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .stat {
-      padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper-strong);
-    }
-
-    .stat b {
-      display: block;
-      font-size: 20px;
-      line-height: 1.1;
-    }
-
-    .stat span {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .record-list {
-      display: grid;
-      gap: 8px;
-      padding: 0 14px 14px;
-    }
-
-    .record-item {
-      display: grid;
-      gap: 7px;
-      width: 100%;
-      padding: 11px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper);
-      color: var(--ink);
-      text-align: left;
-      cursor: pointer;
-      transition: border-color .16s ease, background .16s ease, transform .12s ease;
-    }
-
-    .record-item:hover {
-      border-color: var(--teal);
-      background: #fbfffd;
-    }
-
-    .record-item.active {
-      border-color: var(--teal);
-      background: var(--teal-soft);
-    }
-
-    .record-main {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .record-name {
-      overflow: hidden;
-      font-weight: 760;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .score-badge,
-    .level-badge,
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      min-height: 23px;
-      padding: 0 8px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 720;
-      white-space: nowrap;
-    }
-
-    .score-badge {
-      background: var(--blue-soft);
-      color: var(--blue);
-    }
-
-    .record-meta {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .empty {
-      padding: 18px 14px;
-      color: var(--muted);
-      font-size: 13px;
-      text-align: center;
-    }
-
-    .assessment-panel {
-      overflow: hidden;
-    }
-
-    .form-section {
-      padding: 18px 18px 4px;
-    }
-
-    .section-title {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      margin: 0 0 12px;
-      font-size: 15px;
-      font-weight: 780;
-    }
-
-    .section-title span {
-      color: var(--muted);
-      font-size: 12.5px;
-      font-weight: 520;
-    }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .form-grid.two {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .form-grid .wide {
-      grid-column: 1 / -1;
-    }
-
-    .domain-list {
-      display: grid;
-      gap: 10px;
-      padding: 0 18px 18px;
-    }
-
-    .domain-card {
-      display: grid;
-      grid-template-columns: minmax(170px, 230px) minmax(260px, 1fr);
-      gap: 14px;
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper);
-    }
-
-    .domain-card.priority {
-      border-color: rgba(185, 79, 98, .36);
-      background: linear-gradient(90deg, rgba(250, 231, 235, .72), #fff 42%);
-    }
-
-    .domain-card.strength {
-      border-color: rgba(20, 121, 109, .3);
-      background: linear-gradient(90deg, rgba(223, 242, 237, .72), #fff 42%);
-    }
-
-    .domain-title {
-      display: grid;
-      gap: 7px;
-      align-content: start;
-    }
-
-    .domain-title h3 {
-      margin: 0;
-      font-size: 15px;
-      line-height: 1.25;
-    }
-
-    .domain-title p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 12.5px;
-    }
-
-    .domain-inputs {
-      display: grid;
-      gap: 10px;
-    }
-
-    .score-row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .range-wrap {
-      display: grid;
-      gap: 7px;
-    }
-
-    .range-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    input[type="range"] {
-      width: 100%;
-      accent-color: var(--teal);
-    }
-
-    .score-output {
-      display: grid;
-      place-items: center;
-      width: 46px;
-      height: 38px;
-      border-radius: 8px;
-      background: var(--soft);
-      color: var(--ink);
-      font-weight: 800;
-    }
-
-    .level-badge {
-      width: fit-content;
-      background: var(--amber-soft);
-      color: #8c4514;
-    }
-
-    .level-badge.low {
-      background: var(--rose-soft);
-      color: #84283a;
-    }
-
-    .level-badge.high {
-      background: var(--teal-soft);
-      color: var(--teal-strong);
-    }
-
-    .check-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-    }
-
-    .check-pill {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      min-height: 30px;
-      padding: 0 9px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: var(--paper-strong);
-      color: #3d4a46;
-      font-size: 12.5px;
-      cursor: pointer;
-      user-select: none;
-      transition: border-color .16s ease, background .16s ease, color .16s ease;
-    }
-
-    .check-pill input {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-    }
-
-    .check-pill:has(input:checked) {
-      border-color: rgba(20, 121, 109, .42);
-      background: var(--teal-soft);
-      color: var(--teal-strong);
-      font-weight: 720;
-    }
-
-    .result-body {
-      display: grid;
-      gap: 14px;
-      padding: 14px;
-    }
-
-    .summary-card {
-      display: grid;
-      gap: 10px;
-      padding: 13px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper-strong);
-    }
-
-    .summary-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .big-score {
-      font-size: 36px;
-      font-weight: 820;
-      line-height: 1;
-      letter-spacing: 0;
-    }
-
-    .summary-text {
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .result-block {
-      display: grid;
-      gap: 9px;
-    }
-
-    .result-block h3 {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 780;
-    }
-
-    .result-list {
-      display: grid;
-      gap: 8px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .result-list li {
-      padding: 9px 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper);
-      color: #33423e;
-      font-size: 13px;
-    }
-
-    .result-list.goals li {
-      border-left: 4px solid var(--teal);
-    }
-
-    .tag-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-
-    .tag {
-      background: var(--soft);
-      color: var(--muted);
-    }
-
-    .tag.urgent {
-      background: var(--rose-soft);
-      color: #84283a;
-    }
-
-    .tag.good {
-      background: var(--teal-soft);
-      color: var(--teal-strong);
-    }
-
-    .privacy-note {
-      padding: 10px 12px;
-      border: 1px solid rgba(49, 93, 133, .18);
-      border-radius: 8px;
-      background: var(--blue-soft);
-      color: #274761;
-      font-size: 12.5px;
-    }
-
-    .hidden-file {
-      display: none;
-    }
-
-    .toast {
-      position: fixed;
-      right: 22px;
-      bottom: 22px;
-      z-index: 50;
-      max-width: min(420px, calc(100vw - 32px));
-      padding: 12px 14px;
-      border: 1px solid rgba(20, 121, 109, .24);
-      border-radius: 8px;
-      background: #123f39;
-      color: #fff;
-      box-shadow: 0 16px 42px rgba(18, 63, 57, .24);
-      opacity: 0;
-      transform: translateY(12px);
-      pointer-events: none;
-      transition: opacity .18s ease, transform .18s ease;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: none;
-    }
-
-    @media (max-width: 1180px) {
-      .workspace {
-        grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
-      }
-
-      .result-panel {
-        position: static;
-        grid-column: 1 / -1;
-        max-height: none;
-      }
-    }
-
-    @media (max-width: 840px) {
-      .topbar {
-        position: static;
-        grid-template-columns: 1fr;
-      }
-
-      .top-actions {
-        justify-content: flex-start;
-      }
-
-      .workspace {
-        grid-template-columns: 1fr;
-      }
-
-      .memory-panel {
-        position: static;
-        max-height: none;
-      }
-
-      .domain-card {
-        grid-template-columns: 1fr;
-      }
-
-      .form-grid,
-      .form-grid.two {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 560px) {
-      body {
-        font-size: 14px;
-      }
-
-      .app-shell {
-        padding: 14px 12px 28px;
-      }
-
-      .brand {
-        align-items: flex-start;
-      }
-
-      .brand-mark {
-        width: 38px;
-        height: 38px;
-      }
-
-      .top-actions,
-      .button-row {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .btn {
-        width: 100%;
-        padding: 0 10px;
-      }
-
-      .panel-head {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .score-row {
-        grid-template-columns: 1fr;
-      }
-
-      .score-output {
-        width: 100%;
-      }
-    }
-
-    @media print {
-      body {
-        background: #fff;
-      }
-
-      .topbar,
-      .memory-panel,
-      .assessment-panel,
-      .result-panel .panel-head .button-row,
-      .toast {
-        display: none !important;
-      }
-
-      .app-shell {
-        width: auto;
-        padding: 0;
-      }
-
-      .workspace {
-        display: block;
-      }
-
-      .result-panel {
-        border: 0;
-        box-shadow: none;
-      }
-    }
-  </style>
+  <title>知衡 · 感觉统合功能评估</title>
+  <meta name="description" content="面向特殊教育学校的感觉统合功能观察、优势分析与康复目标制定工作台。">
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 28 28">
-            <path d="M14 3.2a10.8 10.8 0 1 0 0 21.6 10.8 10.8 0 0 0 0-21.6Zm0 3.6a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4Z" fill="currentColor" opacity=".22"></path>
-            <path d="M14 7.1c2.1 0 3.9 1.7 3.9 3.9 0 1.8-1.2 3.1-2.5 4.4-.8.8-1.4 1.5-1.4 2.6 0-1.1-.6-1.8-1.4-2.6-1.3-1.3-2.5-2.6-2.5-4.4 0-2.2 1.8-3.9 3.9-3.9Z" fill="currentColor"></path>
-            <path d="M6.2 20.7c1.5-1.1 3.9-1.8 7.8-1.8s6.3.7 7.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-          </svg>
-        </div>
-        <div>
-          <h1>感觉统合评估与康复目标工作台</h1>
-          <p>面向特殊儿童，重点支持智力发育迟缓学生的感统资料记录与目标制定。</p>
-        </div>
+  <header class="app-header">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true">
+        <span>知</span>
+        <i></i>
       </div>
-
-      <div class="top-actions">
-        <button class="btn secondary" id="newRecordBtn" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg>
-          新建
-        </button>
-        <button class="btn" id="saveRecordBtn" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4Zm4 0v6h7V4M8 20v-7h8v7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path></svg>
-          保存记忆
-        </button>
-        <button class="btn secondary" id="printBtn" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path></svg>
-          打印报告
-        </button>
+      <div>
+        <div class="brand-line">
+          <h1>知衡</h1>
+          <span class="product-label">感觉统合功能评估</span>
+        </div>
+        <p>特殊教育学校 · 康复评估与目标制定</p>
       </div>
-    </header>
+    </div>
 
-    <main class="workspace">
-      <aside class="panel memory-panel">
-        <div class="panel-head">
+    <nav class="header-actions" aria-label="主要操作">
+      <a class="button quiet admin-link" href="./admin.html" title="打开数据后台">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg>
+        <span>数据后台</span>
+      </a>
+      <button class="button quiet" id="newRecordBtn" type="button" title="新建评估">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span>新建</span>
+      </button>
+      <button class="button primary" id="saveRecordBtn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4Zm4 0v6h7V4M8 20v-7h8v7"/></svg>
+        <span>保存评估</span>
+      </button>
+      <button class="icon-button" id="printBtn" type="button" title="打印报告" aria-label="打印报告">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <div class="method-strip">
+    <div class="method-inner">
+      <span class="method-dot" aria-hidden="true"></span>
+      <p><strong>学校场景功能性观察工具</strong>，强调活动参与、环境支持与可观察表现，不替代标准化量表或医学诊断。</p>
+      <button class="text-button" id="methodBtn" type="button">评分依据与专业说明</button>
+    </div>
+  </div>
+
+  <main class="workspace">
+    <aside class="records-column" aria-label="学生档案">
+      <section class="side-section record-summary">
+        <div class="section-heading compact">
           <div>
-            <h2 class="panel-title">学生档案记忆</h2>
-            <p class="panel-note">保存在当前浏览器本地</p>
+            <span class="eyebrow">本机档案</span>
+            <h2>评估记录</h2>
           </div>
+          <span class="count-badge" id="recordCount">0</span>
         </div>
-        <div class="memory-tools">
-          <div class="field">
-            <label for="searchRecords">搜索档案</label>
-            <input class="input" id="searchRecords" type="search" placeholder="姓名、班级、诊断关键词">
-          </div>
-          <div class="memory-status">
-            <div class="stat">
-              <b id="recordCount">0</b>
-              <span>已保存档案</span>
-            </div>
-            <div class="stat">
-              <b id="draftState">草稿</b>
-              <span>自动暂存</span>
-            </div>
-          </div>
-          <button class="btn secondary" id="importJsonBtn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-            导入JSON备份
-          </button>
-          <input class="hidden-file" id="importJsonInput" type="file" accept="application/json,.json">
+
+        <label class="search-field" for="searchRecords">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <input id="searchRecords" type="search" placeholder="搜索姓名、编号或班级">
+        </label>
+
+        <div class="local-status">
+          <span><i class="status-light"></i><b id="draftState">自动暂存</b></span>
+          <span id="lastSavedText">尚未保存</span>
         </div>
+
         <div class="record-list" id="recordList"></div>
-      </aside>
-
-      <section class="panel assessment-panel">
-        <div class="panel-head">
-          <div>
-            <h2 class="panel-title">评估数据录入</h2>
-            <p class="panel-note">评分 1-5：1为明显困难，5为明显优势</p>
-          </div>
-          <button class="btn warning" id="deleteRecordBtn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-            删除当前
-          </button>
-        </div>
-
-        <form id="assessmentForm" autocomplete="off">
-          <section class="form-section">
-            <h2 class="section-title">学生基本资料 <span>用于报告抬头与目标语境</span></h2>
-            <div class="form-grid">
-              <div class="form-field">
-                <label for="studentName">姓名</label>
-                <input class="input" id="studentName" name="studentName" placeholder="学生姓名">
-              </div>
-              <div class="form-field">
-                <label for="gender">性别</label>
-                <select class="select" id="gender" name="gender">
-                  <option value="">未填写</option>
-                  <option>男</option>
-                  <option>女</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="age">年龄</label>
-                <input class="input" id="age" name="age" placeholder="如：8岁3个月">
-              </div>
-              <div class="form-field">
-                <label for="className">班级/年级</label>
-                <input class="input" id="className" name="className" placeholder="如：康复三班">
-              </div>
-              <div class="form-field">
-                <label for="primaryNeed">主要发展需要</label>
-                <select class="select" id="primaryNeed" name="primaryNeed">
-                  <option>智力发育迟缓</option>
-                  <option>孤独症谱系障碍</option>
-                  <option>注意缺陷与多动表现</option>
-                  <option>脑性瘫痪伴随感统需要</option>
-                  <option>语言/运动综合发展迟缓</option>
-                  <option>其他</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="assessmentDate">评估日期</label>
-                <input class="input" id="assessmentDate" name="assessmentDate" type="date">
-              </div>
-              <div class="form-field">
-                <label for="evaluator">评估人</label>
-                <input class="input" id="evaluator" name="evaluator" placeholder="康复治疗师/教师">
-              </div>
-              <div class="form-field">
-                <label for="setting">评估情境</label>
-                <select class="select" id="setting" name="setting">
-                  <option>个训室</option>
-                  <option>感统训练室</option>
-                  <option>课堂</option>
-                  <option>家庭</option>
-                  <option>综合观察</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="cooperation">配合度</label>
-                <select class="select" id="cooperation" name="cooperation">
-                  <option>需要较多提示</option>
-                  <option>可在结构化提示下配合</option>
-                  <option>配合较稳定</option>
-                  <option>波动明显</option>
-                  <option>暂无法稳定评估</option>
-                </select>
-              </div>
-              <div class="form-field wide">
-                <label for="background">背景与主要关切</label>
-                <textarea class="textarea" id="background" name="background" placeholder="可记录家长/教师反馈、课堂表现、安全注意事项、既往训练情况等。"></textarea>
-              </div>
-            </div>
-          </section>
-
-          <section class="form-section">
-            <h2 class="section-title">感觉统合维度 <span>结合观察、任务表现和日常功能填写</span></h2>
-          </section>
-          <div class="domain-list" id="domainList"></div>
-        </form>
       </section>
 
-      <aside class="panel result-panel">
-        <div class="panel-head">
+      <section class="side-section data-tools">
+        <div class="section-heading compact">
           <div>
-            <h2 class="panel-title">自动分析与目标</h2>
-            <p class="panel-note">随评分和观察记录即时更新</p>
-          </div>
-          <div class="button-row">
-            <button class="btn secondary" id="exportJsonBtn" type="button">JSON</button>
-            <button class="btn secondary" id="exportCsvBtn" type="button">CSV</button>
-            <button class="btn secondary" id="exportReportBtn" type="button">报告</button>
+            <span class="eyebrow">数据管理</span>
+            <h2>备份与导出</h2>
           </div>
         </div>
-        <div class="result-body">
-          <div class="privacy-note">儿童资料仅保存在当前浏览器本地。更换电脑、清除浏览器数据或使用无痕模式时，本地记忆可能丢失。</div>
+        <div class="tool-grid">
+          <button class="tool-button" id="importJsonBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></svg>
+            导入备份
+          </button>
+          <button class="tool-button" id="exportJsonBtn" type="button">JSON</button>
+          <button class="tool-button" id="exportCsvBtn" type="button">CSV</button>
+          <button class="tool-button" id="exportReportBtn" type="button">评估报告</button>
+        </div>
+        <input class="visually-hidden" id="importJsonInput" type="file" accept="application/json,.json">
+      </section>
+    </aside>
 
-          <section class="summary-card">
-            <div class="summary-top">
+    <section class="assessment-column">
+      <div class="assessment-toolbar">
+        <div>
+          <span class="eyebrow">当前评估</span>
+          <h2 id="currentRecordTitle">新建学生评估</h2>
+        </div>
+        <div class="completion-block">
+          <div class="completion-copy">
+            <span>评估完成度</span>
+            <strong id="coverageText">0%</strong>
+          </div>
+          <div class="progress-track" aria-hidden="true"><i id="coverageBar"></i></div>
+        </div>
+        <button class="icon-button delete-record" id="deleteRecordBtn" type="button" title="删除当前本机档案" aria-label="删除当前本机档案">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
+        </button>
+      </div>
+
+      <form id="assessmentForm" autocomplete="off">
+        <section class="form-band profile-band">
+          <div class="band-heading">
+            <div>
+              <span class="step-index">01</span>
               <div>
-                <div class="big-score" id="averageScore">3.0</div>
-                <div class="summary-text">感统平均表现</div>
+                <h3>学生与评估情境</h3>
+                <p>记录影响结果解释的基本背景、观察来源与安全信息。</p>
               </div>
-              <span class="score-badge" id="overallLevel">发展中</span>
             </div>
-            <p class="summary-text" id="overallSummary"></p>
-            <div class="tag-row" id="priorityTags"></div>
-          </section>
+            <span class="required-note">姓名或编号至少填写一项</span>
+          </div>
 
-          <section class="result-block">
-            <h3>学生优势</h3>
-            <ul class="result-list" id="strengthList"></ul>
-          </section>
+          <div class="form-grid four">
+            <label class="field">
+              <span>学生姓名</span>
+              <input id="studentName" name="studentName" placeholder="可仅保存在本机">
+            </label>
+            <label class="field">
+              <span>学生编号</span>
+              <input id="studentCode" name="studentCode" placeholder="建议用于云端去标识化">
+            </label>
+            <label class="field">
+              <span>性别</span>
+              <select id="gender" name="gender">
+                <option value="">未填写</option>
+                <option>男</option>
+                <option>女</option>
+                <option>其他/不详</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>年龄</span>
+              <input id="age" name="age" placeholder="如：8岁3个月">
+            </label>
+            <label class="field">
+              <span>班级/年级</span>
+              <input id="className" name="className" placeholder="如：康复三班">
+            </label>
+            <label class="field">
+              <span>主要发展需要</span>
+              <select id="primaryNeed" name="primaryNeed">
+                <option>全面发育迟缓/智力障碍</option>
+                <option>孤独症谱系障碍</option>
+                <option>注意与执行功能困难</option>
+                <option>脑性瘫痪伴感觉运动需要</option>
+                <option>语言与运动综合发展迟缓</option>
+                <option>其他</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>评估日期</span>
+              <input id="assessmentDate" name="assessmentDate" type="date">
+            </label>
+            <label class="field">
+              <span>评估人</span>
+              <input id="evaluator" name="evaluator" placeholder="治疗师/教师">
+            </label>
+            <label class="field">
+              <span>主要情境</span>
+              <select id="setting" name="setting">
+                <option>综合观察</option>
+                <option>感统训练室</option>
+                <option>个训室</option>
+                <option>课堂</option>
+                <option>家庭</option>
+                <option>进餐/生活自理</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>配合与结果可信度</span>
+              <select id="cooperation" name="cooperation">
+                <option>资料充分，表现较稳定</option>
+                <option>结构化提示下可评估</option>
+                <option>状态波动，需结合多次观察</option>
+                <option>暂无法稳定评估</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>沟通方式</span>
+              <select id="communicationMode" name="communicationMode">
+                <option>口语沟通</option>
+                <option>短语/单词</option>
+                <option>手势或图片沟通</option>
+                <option>辅助沟通设备</option>
+                <option>沟通方式有限</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>移动能力</span>
+              <select id="mobility" name="mobility">
+                <option>独立移动</option>
+                <option>需监督或扶持</option>
+                <option>使用辅助器具</option>
+                <option>主要依赖成人协助</option>
+              </select>
+            </label>
+          </div>
 
-          <section class="result-block">
-            <h3>主要不足与支持需要</h3>
-            <ul class="result-list" id="needList"></ul>
-          </section>
+          <fieldset class="observation-sources">
+            <legend>观察来源（建议至少两个情境）</legend>
+            <div class="chip-checks">
+              <label><input type="checkbox" name="observationSources" value="结构化任务"><span>结构化任务</span></label>
+              <label><input type="checkbox" name="observationSources" value="课堂观察"><span>课堂观察</span></label>
+              <label><input type="checkbox" name="observationSources" value="自由活动"><span>自由活动</span></label>
+              <label><input type="checkbox" name="observationSources" value="进餐/自理"><span>进餐/自理</span></label>
+              <label><input type="checkbox" name="observationSources" value="家长访谈"><span>家长访谈</span></label>
+              <label><input type="checkbox" name="observationSources" value="教师访谈"><span>教师访谈</span></label>
+            </div>
+          </fieldset>
 
-          <section class="result-block">
-            <h3>阶段性康复目标</h3>
-            <ul class="result-list goals" id="goalList"></ul>
-          </section>
+          <div class="form-grid two text-areas">
+            <label class="field">
+              <span>背景与主要关切</span>
+              <textarea id="background" name="background" placeholder="家长/教师最关注的活动、既往训练、兴趣与有效强化物等。"></textarea>
+            </label>
+            <label class="field safety-field">
+              <span>医疗与安全注意事项</span>
+              <textarea id="medicalPrecautions" name="medicalPrecautions" placeholder="癫痫、心肺问题、骨关节风险、视听异常、吞咽风险、药物影响等。"></textarea>
+            </label>
+          </div>
+        </section>
 
-          <section class="result-block">
-            <h3>训练与课堂支持建议</h3>
-            <ul class="result-list" id="strategyList"></ul>
-          </section>
+        <section class="form-band rating-intro">
+          <div class="band-heading">
+            <div>
+              <span class="step-index">02</span>
+              <div>
+                <h3>感觉统合与功能表现</h3>
+                <p>对每项可观察能力评分；未观察到的项目保持“未评”，不计入结果。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rating-legend" aria-label="评分标准">
+            <div><b>1</b><span>全程协助<br>&lt;25%</span></div>
+            <div><b>2</b><span>大量协助<br>25-49%</span></div>
+            <div><b>3</b><span>部分提示<br>50-74%</span></div>
+            <div><b>4</b><span>少量提示<br>75-89%</span></div>
+            <div><b>5</b><span>独立稳定<br>≥90%</span></div>
+            <div class="legend-na"><b>—</b><span>未评估<br>不计分</span></div>
+          </div>
+
+          <div class="category-filter" id="categoryFilter" aria-label="领域筛选">
+            <button class="active" type="button" data-category="all">全部领域</button>
+            <button type="button" data-category="modulation">感觉调节</button>
+            <button type="button" data-category="sensorimotor">感觉运动</button>
+            <button type="button" data-category="participation">调节与参与</button>
+          </div>
+        </section>
+
+        <div class="domain-list" id="domainList"></div>
+      </form>
+    </section>
+
+    <aside class="insights-column" aria-label="自动分析结果">
+      <section class="insight-section score-overview">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">即时分析</span>
+            <h2>功能表现概览</h2>
+          </div>
+          <span class="analysis-state" id="analysisState">等待评估</span>
         </div>
-      </aside>
-    </main>
-  </div>
+
+        <div class="score-hero">
+          <div class="score-ring" id="scoreRing">
+            <strong id="averageScore">—</strong>
+            <span>综合分</span>
+          </div>
+          <div class="score-copy">
+            <h3 id="overallLevel">尚未形成结果</h3>
+            <p id="overallSummary">至少完成3个领域、每个领域3项后生成综合分析。</p>
+          </div>
+        </div>
+        <div class="priority-tags" id="priorityTags"></div>
+      </section>
+
+      <section class="insight-section cloud-section">
+        <div class="cloud-head">
+          <div class="cloud-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3Zm0 0v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+          </div>
+          <div>
+            <h3>云端数据同步</h3>
+            <p id="cloudDescription">当前仅保存在本机浏览器</p>
+          </div>
+          <label class="switch" title="启用或停用云端同步">
+            <input id="cloudSyncToggle" type="checkbox">
+            <span></span>
+          </label>
+        </div>
+        <div class="sync-status" id="syncStatus">
+          <i></i><span>未启用 · 数据不会上传</span>
+        </div>
+        <button class="text-button manage-privacy" id="privacyManageBtn" type="button">隐私与同步设置</button>
+      </section>
+
+      <section class="insight-section result-section">
+        <div class="result-tabs" role="tablist" aria-label="分析结果分类">
+          <button class="active" type="button" data-result-tab="profile">优势与需要</button>
+          <button type="button" data-result-tab="goals">康复目标</button>
+          <button type="button" data-result-tab="strategies">支持策略</button>
+        </div>
+
+        <div class="result-panel active" data-result-panel="profile">
+          <div class="result-group">
+            <h3><span class="result-marker strength"></span>相对优势</h3>
+            <ul id="strengthList"></ul>
+          </div>
+          <div class="result-group">
+            <h3><span class="result-marker need"></span>优先支持需要</h3>
+            <ul id="needList"></ul>
+          </div>
+        </div>
+
+        <div class="result-panel" data-result-panel="goals">
+          <div class="goal-note">目标按8周周期生成，建议结合基线、教学计划与家长优先事项调整。</div>
+          <ol class="goal-list" id="goalList"></ol>
+        </div>
+
+        <div class="result-panel" data-result-panel="strategies">
+          <ul class="strategy-list" id="strategyList"></ul>
+        </div>
+      </section>
+
+      <section class="clinical-note">
+        <strong>临床提醒</strong>
+        <p>若出现突然退步、意识改变、疑似癫痫、明显疼痛、眩晕或吞咽安全风险，应先转介医学评估。</p>
+      </section>
+    </aside>
+  </main>
+
+  <dialog class="modal" id="methodDialog">
+    <div class="modal-head">
+      <div>
+        <span class="eyebrow">专业说明</span>
+        <h2>评分、解释与使用边界</h2>
+      </div>
+      <button class="icon-button close-dialog" type="button" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body method-content">
+      <section>
+        <h3>工具定位</h3>
+        <p>本工具用于整理学校与康复场景中的功能性观察，帮助团队描述学生在身体功能、活动、参与和环境支持方面的表现。它不是标准化常模量表，不能单独用于诊断或服务资格判定。</p>
+      </section>
+      <section>
+        <h3>评分原则</h3>
+        <p>评分反映学生在当前任务和支持条件下的完成程度。建议至少在两个自然情境观察，并记录提示类型、成功比例、持续时间和安全反应。未观察的项目应保持未评，避免用推测分数填补。</p>
+      </section>
+      <section>
+        <h3>专业依据</h3>
+        <p>框架参考 WHO ICF 对身体功能、活动参与和环境因素的整体描述，以及 AOTA 对感觉统合与学校参与的实践立场。具体干预需结合个体综合评估、家庭目标和跨专业团队判断。</p>
+        <div class="reference-links">
+          <a href="https://www.who.int/standards/classifications/international-classification-of-functioning-disability-and-health" target="_blank" rel="noreferrer">WHO ICF</a>
+          <a href="https://www.aota.org/practice/clinical-topics/sensory-integration-and-processing" target="_blank" rel="noreferrer">AOTA 感觉统合与处理</a>
+          <a href="https://www.aota.org/practice/practice-settings/schools-early-intervention-community-education/schools" target="_blank" rel="noreferrer">AOTA 学校实践</a>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="modal consent-modal" id="cloudConsentDialog">
+    <div class="modal-head">
+      <div>
+        <span class="eyebrow">隐私与授权</span>
+        <h2>启用云端同步</h2>
+      </div>
+      <button class="icon-button close-dialog" type="button" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="privacy-principles">
+        <div><b>访问统计匿名</b><span>不保存IP地址，仅统计会话、时间、页面和设备类别。</span></div>
+        <div><b>评估同步需授权</b><span>只有启用同步后保存的评估才会发送到 Cloudflare 数据库。</span></div>
+        <div><b>本地记录保留</b><span>无论是否同步，当前浏览器仍保存一份可导出的本地记录。</span></div>
+      </div>
+
+      <fieldset class="sync-mode">
+        <legend>选择同步模式</legend>
+        <label>
+          <input type="radio" name="syncMode" value="deidentified" checked>
+          <span><b>去标识化同步（推荐）</b><small>不上传姓名、班级、评估人、背景和医疗注意事项；使用学生编号识别。</small></span>
+        </label>
+        <label>
+          <input type="radio" name="syncMode" value="full">
+          <span><b>完整记录同步</b><small>包括姓名和自由文本，仅适用于已完成机构授权与隐私告知的情形。</small></span>
+        </label>
+      </fieldset>
+
+      <label class="authority-check">
+        <input id="consentAuthority" type="checkbox">
+        <span>我确认已取得监护人或机构授权，并有权限将所选范围的评估数据存入云端。</span>
+      </label>
+
+      <div class="modal-actions">
+        <button class="button quiet close-dialog" type="button">取消</button>
+        <button class="button primary" id="confirmCloudBtn" type="button" disabled>确认并启用</button>
+      </div>
+    </div>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script>
-    const STORAGE_KEY = "sensoryIntegrationRecords.v1";
-    const DRAFT_KEY = "sensoryIntegrationDraft.v1";
-
-    const levels = {
-      1: { label: "明显困难", cls: "low" },
-      2: { label: "需要支持", cls: "low" },
-      3: { label: "发展中", cls: "" },
-      4: { label: "相对稳定", cls: "high" },
-      5: { label: "明显优势", cls: "high" }
-    };
-
-    const dimensions = [
-      {
-        id: "tactile",
-        title: "触觉调节",
-        scope: "材料接触、被动触碰、衣物/洗护耐受",
-        signs: ["抗拒黏土颜料", "怕洗头剪指甲", "喜欢挤压摩擦", "贴身衣物敏感"],
-        strength: "能较稳定接受多种触觉材料，参与桌面操作和生活照护时抗拒少，可作为扩展新材料体验的基础。",
-        need: "对触觉输入存在回避或过度寻求，可能影响材料操作、个人清洁、穿衣和课堂参与。",
-        goal: "在4周内，通过深压准备、材料分级探索和即时强化，能在视觉提示下接触3种不同触觉材料，每种保持参与3分钟，明显抗拒较基线减少。",
-        strategy: "先给予稳定本体觉输入，再进入触觉材料；材料从干爽、低黏度逐步过渡到湿黏或颗粒材料。"
-      },
-      {
-        id: "vestibular",
-        title: "前庭平衡与姿势控制",
-        scope: "坐姿稳定、平衡、摇摆旋转后的定向",
-        signs: ["坐姿易塌陷", "怕离地活动", "过度追求旋转", "转后易失控"],
-        strength: "平衡与姿势控制较稳定，能在移动或变换姿势任务中保持身体定向，适合加入更复杂的动作序列。",
-        need: "前庭调节和姿势控制不足，可能表现为坐姿维持困难、移动中不稳、离地活动紧张或过度追求旋转。",
-        goal: "在4周内，能在保护下完成摇摆、平衡木或坐姿核心活动3组，每组保持30秒以上，并能在结束后回到指定位置继续任务。",
-        strategy: "前庭输入要短时、可预测、有停止信号；旋转类活动需控制次数，并观察眼神、面色和情绪变化。"
-      },
-      {
-        id: "proprioceptive",
-        title: "本体觉与力量控制",
-        scope: "推拉搬运、身体位置觉、用力大小",
-        signs: ["动作力度过大", "常碰撞他人", "寻求重压", "拿捏物品不稳"],
-        strength: "本体觉反馈和力量控制较好，能借助推拉、搬运和抗阻活动提升注意与动作组织。",
-        need: "身体位置觉和用力调节不足，可能出现碰撞、动作粗大、握力不稳或需要大量重压输入。",
-        goal: "在4周内，能完成推墙、搬运、拉弹力带等本体觉活动4项，并在治疗师提示下把用力分为轻、中、重3个等级进行控制。",
-        strategy: "每日安排短时重力工作，如搬垫子、推箱子、拉弹力带；活动后立即连接精细或课堂任务。"
-      },
-      {
-        id: "praxis",
-        title: "动作计划与双侧协调",
-        scope: "模仿、跨中线、双手配合、动作顺序",
-        signs: ["模仿慢", "跨中线困难", "双手配合弱", "动作顺序混乱"],
-        strength: "动作模仿和双侧协调基础较好，能在示范后完成多步骤身体动作，可进一步发展游戏规则理解。",
-        need: "动作计划和双侧协调不足，可能影响穿脱、体育游戏、手工操作和课堂指令执行。",
-        goal: "在4周内，能在示范和视觉流程提示下完成3步动作序列，如拍手、跨步、投放，连续完成4轮且顺序错误不超过1次。",
-        strategy: "采用固定动作口令、图片流程和同伴示范；先练双侧大动作，再迁移到手工和自理任务。"
-      },
-      {
-        id: "fineMotor",
-        title: "精细动作与手眼协调",
-        scope: "抓握、穿插、剪贴、描画、投放",
-        signs: ["抓握不成熟", "剪贴困难", "描线偏离", "手眼配合慢"],
-        strength: "手眼协调和精细操作较稳定，能参与桌面任务，可作为提升学习准备技能的切入点。",
-        need: "精细动作和手眼协调不足，可能影响书写准备、手工课、餐具使用和学习材料操作。",
-        goal: "在4周内，能完成夹夹子、串珠、描线或投放任务3项，每项持续5分钟，在少量语言提示下完成率达到70%以上。",
-        strategy: "用大到小、粗到细的材料分级；每次精细任务前加入肩肘稳定和手掌觉醒活动。"
-      },
-      {
-        id: "visualAuditory",
-        title: "视听觉注意与过滤",
-        scope: "听指令、视觉追踪、抗干扰、任务维持",
-        signs: ["易被声音吸引", "听指令漏项", "视觉追踪弱", "等待困难"],
-        strength: "能较好利用视觉或听觉线索完成任务，注意转移和抗干扰基础较好。",
-        need: "视听觉过滤和注意维持不足，可能表现为漏听指令、被环境干扰、等待困难或任务中断。",
-        goal: "在4周内，能在低干扰环境中根据1-2步口令完成指定任务，连续维持注意6分钟，期间提示次数逐步减少。",
-        strategy: "减少背景噪声，使用短句指令和视觉提示卡；把任务分成可见的小段并设置完成反馈。"
-      },
-      {
-        id: "oral",
-        title: "口腔感觉与进食耐受",
-        scope: "口周敏感、咀嚼、食物质地、流涎/咬物",
-        signs: ["挑食明显", "抗拒刷牙", "咀嚼弱", "咬物寻求"],
-        strength: "口腔感觉耐受和咀嚼参与较稳定，可在安全前提下扩展食物质地和口肌活动。",
-        need: "口腔感觉调节或咀嚼参与不足，可能影响刷牙、进食质地接受、口腔探索和课堂安坐。",
-        goal: "在4周内，在安全评估和成人陪同下，能接受口周准备活动并尝试2种接近目标质地的食物或口腔活动，抗拒反应较基线减少。",
-        strategy: "进食相关训练需关注吞咽安全；先做口周外部准备和非食物口腔游戏，再逐步接近真实进食情境。"
-      },
-      {
-        id: "emotion",
-        title: "情绪调节与课堂参与",
-        scope: "唤醒水平、等待、转衔、挫折耐受",
-        signs: ["转衔哭闹", "兴奋难降", "低唤醒懒散", "挫折逃避"],
-        strength: "情绪和唤醒水平较易被成人支持调节，能在结构化活动中维持较稳定参与。",
-        need: "感觉输入后的情绪调节和课堂参与不足，可能出现过度兴奋、逃避、哭闹、低唤醒或转衔困难。",
-        goal: "在4周内，能在视觉日程和感觉调节策略支持下完成活动转衔3次，并能用休息卡、深压或呼吸策略恢复到可参与状态。",
-        strategy: "设置清晰开始结束信号，预告转衔；把感觉调节策略固定到课前、课中短休和课后整理三个时点。"
-      },
-      {
-        id: "dailyLife",
-        title: "生活自理中的感统应用",
-        scope: "穿脱、如厕、餐具、整理物品、校园安全",
-        signs: ["穿脱依赖", "餐具使用弱", "整理慢", "空间安全弱"],
-        strength: "能把感统能力迁移到部分生活自理任务中，适合通过真实情境巩固独立性。",
-        need: "感统能力向生活自理迁移不足，可能影响穿脱、用餐、整理物品、如厕流程和校园安全。",
-        goal: "在4周内，能按图片流程完成1项生活自理任务，如整理书包、穿脱外套或餐前准备，成人提示逐步减少至2次以内。",
-        strategy: "用真实物品和固定流程训练；每个生活目标只抓一个关键动作，稳定后再扩展完整流程。"
-      }
-    ];
-
-    const form = document.getElementById("assessmentForm");
-    const domainList = document.getElementById("domainList");
-    const recordList = document.getElementById("recordList");
-    const toast = document.getElementById("toast");
-    const dateField = document.getElementById("assessmentDate");
-    const searchRecords = document.getElementById("searchRecords");
-
-    let records = loadRecords();
-    let activeId = null;
-    let draftTimer = null;
-    let toastTimer = null;
-
-    function today() {
-      return new Date().toISOString().slice(0, 10);
-    }
-
-    function uid() {
-      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-      return "rec-" + Date.now().toString(36) + Math.random().toString(36).slice(2);
-    }
-
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    function showToast(message) {
-      clearTimeout(toastTimer);
-      toast.textContent = message;
-      toast.classList.add("show");
-      toastTimer = setTimeout(() => toast.classList.remove("show"), 2400);
-    }
-
-    function loadRecords() {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    }
-
-    function persistRecords() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-      renderRecords();
-    }
-
-    function renderDomains() {
-      domainList.innerHTML = dimensions.map((dim) => `
-        <article class="domain-card" data-domain-card="${dim.id}">
-          <div class="domain-title">
-            <h3>${escapeHtml(dim.title)}</h3>
-            <p>${escapeHtml(dim.scope)}</p>
-            <span class="level-badge" id="${dim.id}Level">发展中</span>
-          </div>
-          <div class="domain-inputs">
-            <div class="score-row">
-              <div class="range-wrap">
-                <div class="range-head"><span>明显困难</span><span>明显优势</span></div>
-                <input class="score-range" id="${dim.id}Score" name="${dim.id}Score" type="range" min="1" max="5" step="1" value="3" data-domain="${dim.id}">
-              </div>
-              <output class="score-output" id="${dim.id}Output" for="${dim.id}Score">3</output>
-            </div>
-            <div>
-              <div class="field-label">常见表现</div>
-              <div class="check-grid">
-                ${dim.signs.map((sign) => `
-                  <label class="check-pill">
-                    <input type="checkbox" name="${dim.id}Signs" value="${escapeHtml(sign)}">
-                    <span>${escapeHtml(sign)}</span>
-                  </label>
-                `).join("")}
-              </div>
-            </div>
-            <div class="form-field">
-              <label for="${dim.id}Note">观察记录</label>
-              <textarea class="textarea" id="${dim.id}Note" name="${dim.id}Note" placeholder="记录具体情境、提示方式、持续时间、抗拒/寻求表现和安全注意点。"></textarea>
-            </div>
-          </div>
-        </article>
-      `).join("");
-    }
-
-    function collectData() {
-      const data = {
-        id: activeId,
-        studentName: form.studentName.value.trim(),
-        gender: form.gender.value,
-        age: form.age.value.trim(),
-        className: form.className.value.trim(),
-        primaryNeed: form.primaryNeed.value,
-        assessmentDate: form.assessmentDate.value || today(),
-        evaluator: form.evaluator.value.trim(),
-        setting: form.setting.value,
-        cooperation: form.cooperation.value,
-        background: form.background.value.trim(),
-        domains: {},
-        updatedAt: new Date().toISOString()
-      };
-
-      dimensions.forEach((dim) => {
-        const score = Number(form[`${dim.id}Score`].value);
-        const signs = Array.from(form.querySelectorAll(`input[name="${dim.id}Signs"]:checked`)).map((item) => item.value);
-        data.domains[dim.id] = {
-          score,
-          signs,
-          note: form[`${dim.id}Note`].value.trim()
-        };
-      });
-
-      return data;
-    }
-
-    function applyData(data) {
-      activeId = data?.id || null;
-      form.studentName.value = data?.studentName || "";
-      form.gender.value = data?.gender || "";
-      form.age.value = data?.age || "";
-      form.className.value = data?.className || "";
-      form.primaryNeed.value = data?.primaryNeed || "智力发育迟缓";
-      form.assessmentDate.value = data?.assessmentDate || today();
-      form.evaluator.value = data?.evaluator || "";
-      form.setting.value = data?.setting || "个训室";
-      form.cooperation.value = data?.cooperation || "需要较多提示";
-      form.background.value = data?.background || "";
-
-      dimensions.forEach((dim) => {
-        const value = data?.domains?.[dim.id] || {};
-        form[`${dim.id}Score`].value = value.score || 3;
-        form[`${dim.id}Note`].value = value.note || "";
-        form.querySelectorAll(`input[name="${dim.id}Signs"]`).forEach((item) => {
-          item.checked = Array.isArray(value.signs) && value.signs.includes(item.value);
-        });
-      });
-
-      updateScoreViews();
-      renderInsights();
-      renderRecords();
-    }
-
-    function updateScoreViews() {
-      dimensions.forEach((dim) => {
-        const score = Number(form[`${dim.id}Score`].value);
-        const output = document.getElementById(`${dim.id}Output`);
-        const level = document.getElementById(`${dim.id}Level`);
-        const card = document.querySelector(`[data-domain-card="${dim.id}"]`);
-        output.textContent = String(score);
-        level.textContent = levels[score].label;
-        level.className = `level-badge ${levels[score].cls}`;
-        card.classList.toggle("priority", score <= 2);
-        card.classList.toggle("strength", score >= 4);
-      });
-    }
-
-    function analyze(data) {
-      const rows = dimensions.map((dim) => {
-        const domain = data.domains?.[dim.id] || { score: 3, signs: [], note: "" };
-        return { ...dim, ...domain, score: Number(domain.score || 3) };
-      });
-
-      const average = rows.reduce((sum, row) => sum + row.score, 0) / rows.length;
-      const sortedAsc = [...rows].sort((a, b) => a.score - b.score);
-      const sortedDesc = [...rows].sort((a, b) => b.score - a.score);
-      const strengths = rows.filter((row) => row.score >= 4);
-      const priorities = rows.filter((row) => row.score <= 2);
-      const developing = rows.filter((row) => row.score === 3);
-      const relativeStrengths = strengths.length ? strengths : sortedDesc.slice(0, 2);
-      const focusRows = priorities.length ? priorities : developing.slice(0, 3);
-      const student = data.studentName || "学生";
-
-      let level = "发展中";
-      let summary = "整体感觉统合表现处于发展中水平，建议结合课堂与个训情境持续观察，并优先支持影响安全、参与和生活自理的项目。";
-      if (average < 2.4) {
-        level = "高支持需求";
-        summary = "多个感统维度存在明显支持需要，宜采用低强度、短时、多次和高度结构化的活动安排，先保证安全与情绪稳定。";
-      } else if (average < 3.2) {
-        level = "需系统支持";
-        summary = "整体表现低于稳定参与要求，建议以本体觉调节、姿势控制和任务维持为基础，逐步促进课堂与生活迁移。";
-      } else if (average >= 4) {
-        level = "整体稳定";
-        summary = "整体感觉调节较稳定，可在优势维度带动下提高动作计划、课堂参与和生活自理的复杂度。";
-      }
-
-      const strengthItems = relativeStrengths.map((row) => {
-        const prefix = row.score >= 4 ? "优势" : "相对较好";
-        return `${prefix}：${row.title}。${row.strength}`;
-      });
-
-      const needItems = (priorities.length ? priorities : sortedAsc.slice(0, 3)).map((row) => {
-        const signText = row.signs?.length ? ` 已记录表现：${row.signs.join("、")}。` : "";
-        return `${row.title}：${row.need}${signText}`;
-      });
-
-      const goalItems = focusRows.slice(0, 4).map((row) => {
-        const support = row.score <= 2 ? "在身体协助、示范和视觉提示支持下" : "在视觉流程和少量语言提示下";
-        return `${student}：${support}，${row.goal}`;
-      });
-
-      if (!goalItems.length) {
-        goalItems.push(`${student}：在8-12周内，将已稳定的感统能力迁移到课堂任务和生活自理流程中，提高独立参与时间与任务完成质量。`);
-      }
-
-      const strategyItems = focusRows.slice(0, 5).map((row) => `${row.title}：${row.strategy}`);
-      strategyItems.push("每次训练记录活动内容、提示等级、持续时间、情绪反应和迁移表现，用同一标准复评以观察变化。");
-
-      return {
-        average,
-        level,
-        summary,
-        rows,
-        strengths: strengthItems,
-        needs: needItems,
-        goals: goalItems,
-        strategies: strategyItems,
-        priorities,
-        developing
-      };
-    }
-
-    function renderInsights() {
-      const data = collectData();
-      const result = analyze(data);
-      document.getElementById("averageScore").textContent = result.average.toFixed(1);
-      document.getElementById("overallLevel").textContent = result.level;
-      document.getElementById("overallSummary").textContent = result.summary;
-
-      const priorityTags = document.getElementById("priorityTags");
-      const tagRows = result.priorities.length ? result.priorities : result.developing.slice(0, 3);
-      priorityTags.innerHTML = tagRows.map((row) => `<span class="tag ${row.score <= 2 ? "urgent" : ""}">${escapeHtml(row.title)} ${row.score}分</span>`).join("") || '<span class="tag good">暂无明显低分维度</span>';
-
-      renderList("strengthList", result.strengths);
-      renderList("needList", result.needs);
-      renderList("goalList", result.goals);
-      renderList("strategyList", result.strategies);
-      queueDraftSave(data);
-    }
-
-    function renderList(id, items) {
-      document.getElementById(id).innerHTML = items.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
-    }
-
-    function queueDraftSave(data) {
-      clearTimeout(draftTimer);
-      document.getElementById("draftState").textContent = "暂存中";
-      draftTimer = setTimeout(() => {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
-        document.getElementById("draftState").textContent = "已暂存";
-      }, 260);
-    }
-
-    function renderRecords() {
-      document.getElementById("recordCount").textContent = String(records.length);
-      const query = searchRecords.value.trim().toLowerCase();
-      const filtered = records
-        .filter((record) => {
-          const haystack = [
-            record.studentName,
-            record.className,
-            record.primaryNeed,
-            record.assessmentDate,
-            record.evaluator
-          ].join(" ").toLowerCase();
-          return !query || haystack.includes(query);
-        })
-        .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-
-      if (!filtered.length) {
-        recordList.innerHTML = `<div class="empty">${records.length ? "没有匹配的档案" : "尚未保存学生档案"}</div>`;
-        return;
-      }
-
-      recordList.innerHTML = filtered.map((record) => {
-        const result = analyze(record);
-        const name = record.studentName || "未命名学生";
-        const date = record.assessmentDate || "";
-        const meta = [record.className, record.primaryNeed, date].filter(Boolean).join(" · ");
-        return `
-          <button class="record-item ${record.id === activeId ? "active" : ""}" type="button" data-record-id="${escapeHtml(record.id)}">
-            <span class="record-main">
-              <span class="record-name">${escapeHtml(name)}</span>
-              <span class="score-badge">${result.average.toFixed(1)}</span>
-            </span>
-            <span class="record-meta">${escapeHtml(meta || "未填写资料")}</span>
-          </button>
-        `;
-      }).join("");
-    }
-
-    function saveCurrentRecord() {
-      const data = collectData();
-      if (!data.studentName) {
-        showToast("请先填写学生姓名，再保存档案。");
-        form.studentName.focus();
-        return;
-      }
-
-      const now = new Date().toISOString();
-      if (!activeId) {
-        data.id = uid();
-        data.createdAt = now;
-        activeId = data.id;
-      } else {
-        data.id = activeId;
-        const old = records.find((record) => record.id === activeId);
-        data.createdAt = old?.createdAt || now;
-      }
-      data.updatedAt = now;
-
-      const index = records.findIndex((record) => record.id === data.id);
-      if (index >= 0) {
-        records[index] = data;
-      } else {
-        records.push(data);
-      }
-      persistRecords();
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
-      showToast("已保存到本地记忆。");
-    }
-
-    function newRecord() {
-      activeId = null;
-      applyData({ assessmentDate: today(), domains: {} });
-      showToast("已切换到新的空白评估。");
-    }
-
-    function deleteCurrentRecord() {
-      if (!activeId) {
-        showToast("当前是草稿，尚未保存为档案。");
-        return;
-      }
-      const current = records.find((record) => record.id === activeId);
-      const name = current?.studentName || "当前档案";
-      if (!confirm(`确定删除“${name}”吗？此操作只删除本地记忆中的档案。`)) return;
-      records = records.filter((record) => record.id !== activeId);
-      persistRecords();
-      newRecord();
-      showToast("已删除当前档案。");
-    }
-
-    function downloadFile(filename, content, type) {
-      const blob = new Blob([content], { type });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    }
-
-    function safeFilename(value) {
-      return String(value || "未命名学生").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 40);
-    }
-
-    function exportCurrentJson() {
-      const data = collectData();
-      const payload = { exportedAt: new Date().toISOString(), record: data, analysis: analyze(data) };
-      downloadFile(`${safeFilename(data.studentName)}-感统评估.json`, JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
-      showToast("已导出当前学生 JSON。");
-    }
-
-    function csvCell(value) {
-      const text = String(value ?? "");
-      return `"${text.replaceAll('"', '""')}"`;
-    }
-
-    function exportAllCsv() {
-      const data = records.length ? records : [collectData()];
-      const header = [
-        "姓名", "性别", "年龄", "班级", "主要发展需要", "评估日期", "评估人", "评估情境", "配合度", "平均分", "优势", "不足", "康复目标",
-        ...dimensions.map((dim) => `${dim.title}分数`),
-        ...dimensions.map((dim) => `${dim.title}表现`),
-        ...dimensions.map((dim) => `${dim.title}观察`)
-      ];
-      const rows = data.map((record) => {
-        const result = analyze(record);
-        return [
-          record.studentName, record.gender, record.age, record.className, record.primaryNeed, record.assessmentDate, record.evaluator, record.setting, record.cooperation,
-          result.average.toFixed(1),
-          result.strengths.join("；"),
-          result.needs.join("；"),
-          result.goals.join("；"),
-          ...dimensions.map((dim) => record.domains?.[dim.id]?.score ?? ""),
-          ...dimensions.map((dim) => (record.domains?.[dim.id]?.signs || []).join("、")),
-          ...dimensions.map((dim) => record.domains?.[dim.id]?.note || "")
-        ];
-      });
-      const csv = "\ufeff" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-      downloadFile(`感统评估数据-${today()}.csv`, csv, "text/csv;charset=utf-8");
-      showToast("已导出 CSV 数据。");
-    }
-
-    function buildReportHtml(record) {
-      const result = analyze(record);
-      const domainRows = result.rows.map((row) => `
-        <tr>
-          <td>${escapeHtml(row.title)}</td>
-          <td>${row.score}</td>
-          <td>${escapeHtml(levels[row.score].label)}</td>
-          <td>${escapeHtml((row.signs || []).join("、"))}</td>
-          <td>${escapeHtml(row.note || "")}</td>
-        </tr>
-      `).join("");
-
-      const list = (items) => `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
-      const titleName = record.studentName || "学生";
-
-      return `<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <title>${escapeHtml(titleName)}-感觉统合评估报告</title>
-  <style>
-    body{margin:0;padding:28px;color:#1d2926;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6}
-    h1{margin:0 0 8px;font-size:26px}
-    h2{margin:24px 0 10px;font-size:18px;border-bottom:1px solid #dce7df;padding-bottom:6px}
-    .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 16px;margin:18px 0;padding:14px;background:#f5f8f4;border:1px solid #dce7df;border-radius:8px}
-    .meta div{font-size:14px}.meta b{color:#65736f}
-    table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}th,td{border:1px solid #dce7df;padding:8px;vertical-align:top;text-align:left}th{background:#edf3ee}
-    ul{margin:8px 0 0;padding-left:20px}.note{color:#65736f;font-size:13px}.score{font-size:34px;font-weight:800;color:#14796d}
-    @media print{body{padding:0}.meta{break-inside:avoid}tr{break-inside:avoid}}
-  </style>
-</head>
-<body>
-  <h1>${escapeHtml(titleName)} 感觉统合评估报告</h1>
-  <p class="note">本报告依据记录数据自动整理，供康复治疗师、特教教师和家长沟通使用，不能替代医学诊断。</p>
-  <div class="meta">
-    <div><b>性别：</b>${escapeHtml(record.gender || "未填写")}</div>
-    <div><b>年龄：</b>${escapeHtml(record.age || "未填写")}</div>
-    <div><b>班级：</b>${escapeHtml(record.className || "未填写")}</div>
-    <div><b>主要发展需要：</b>${escapeHtml(record.primaryNeed || "未填写")}</div>
-    <div><b>评估日期：</b>${escapeHtml(record.assessmentDate || "未填写")}</div>
-    <div><b>评估人：</b>${escapeHtml(record.evaluator || "未填写")}</div>
-    <div><b>评估情境：</b>${escapeHtml(record.setting || "未填写")}</div>
-    <div><b>配合度：</b>${escapeHtml(record.cooperation || "未填写")}</div>
-    <div><b>平均分：</b><span class="score">${result.average.toFixed(1)}</span></div>
-  </div>
-  <h2>背景与主要关切</h2>
-  <p>${escapeHtml(record.background || "未填写")}</p>
-  <h2>总体摘要</h2>
-  <p>${escapeHtml(result.summary)}</p>
-  <h2>学生优势</h2>
-  ${list(result.strengths)}
-  <h2>主要不足与支持需要</h2>
-  ${list(result.needs)}
-  <h2>阶段性康复目标</h2>
-  ${list(result.goals)}
-  <h2>训练与课堂支持建议</h2>
-  ${list(result.strategies)}
-  <h2>评估明细</h2>
-  <table>
-    <thead><tr><th>维度</th><th>分数</th><th>等级</th><th>表现</th><th>观察记录</th></tr></thead>
-    <tbody>${domainRows}</tbody>
-  </table>
-</body>
-</html>`;
-    }
-
-    function exportReport() {
-      const data = collectData();
-      downloadFile(`${safeFilename(data.studentName)}-感统评估报告.html`, buildReportHtml(data), "text/html;charset=utf-8");
-      showToast("已导出 HTML 报告。");
-    }
-
-    function printReport() {
-      const data = collectData();
-      const report = window.open("", "_blank");
-      if (!report) {
-        showToast("浏览器拦截了报告窗口，可先使用“报告”按钮导出。");
-        return;
-      }
-      report.document.open();
-      report.document.write(buildReportHtml(data));
-      report.document.close();
-      report.focus();
-      setTimeout(() => report.print(), 250);
-    }
-
-    function importJson(file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const parsed = JSON.parse(reader.result);
-          const incoming = Array.isArray(parsed) ? parsed : Array.isArray(parsed.records) ? parsed.records : parsed.record ? [parsed.record] : [];
-          const cleaned = incoming
-            .filter((item) => item && typeof item === "object")
-            .map((item) => ({ ...item, id: item.id || uid(), updatedAt: item.updatedAt || new Date().toISOString() }));
-          if (!cleaned.length) {
-            showToast("没有识别到可导入的评估档案。");
-            return;
-          }
-          cleaned.forEach((item) => {
-            const index = records.findIndex((record) => record.id === item.id);
-            if (index >= 0) records[index] = item;
-            else records.push(item);
-          });
-          persistRecords();
-          applyData(cleaned[0]);
-          showToast(`已导入 ${cleaned.length} 份档案。`);
-        } catch {
-          showToast("JSON 文件无法解析。");
-        }
-      };
-      reader.readAsText(file);
-    }
-
-    function init() {
-      renderDomains();
-      dateField.value = today();
-
-      const draft = (() => {
-        try {
-          return JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
-        } catch {
-          return null;
-        }
-      })();
-
-      if (draft) {
-        applyData(draft);
-      } else {
-        applyData({ assessmentDate: today(), domains: {} });
-      }
-
-      form.addEventListener("input", () => {
-        updateScoreViews();
-        renderInsights();
-      });
-      form.addEventListener("change", () => {
-        updateScoreViews();
-        renderInsights();
-      });
-
-      recordList.addEventListener("click", (event) => {
-        const item = event.target.closest("[data-record-id]");
-        if (!item) return;
-        const record = records.find((entry) => entry.id === item.dataset.recordId);
-        if (record) {
-          applyData(record);
-          showToast("已载入学生档案。");
-        }
-      });
-
-      searchRecords.addEventListener("input", renderRecords);
-      document.getElementById("saveRecordBtn").addEventListener("click", saveCurrentRecord);
-      document.getElementById("newRecordBtn").addEventListener("click", newRecord);
-      document.getElementById("deleteRecordBtn").addEventListener("click", deleteCurrentRecord);
-      document.getElementById("exportJsonBtn").addEventListener("click", exportCurrentJson);
-      document.getElementById("exportCsvBtn").addEventListener("click", exportAllCsv);
-      document.getElementById("exportReportBtn").addEventListener("click", exportReport);
-      document.getElementById("printBtn").addEventListener("click", printReport);
-      document.getElementById("importJsonBtn").addEventListener("click", () => document.getElementById("importJsonInput").click());
-      document.getElementById("importJsonInput").addEventListener("change", (event) => {
-        const [file] = event.target.files;
-        if (file) importJson(file);
-        event.target.value = "";
-      });
-    }
-
-    init();
-  </script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

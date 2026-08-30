@@ -1,0 +1,12 @@
+name = "sensory-assessment-site"
+compatibility_date = "2026-08-30"
+pages_build_output_dir = "./dist"
+
+[vars]
+ALLOWED_ORIGINS = "https://sensory-assessment-site.pages.dev,https://jintang6.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sensory-assessment-db"
+database_id = "f7ca03d1-8359-4f4d-b9a0-a339525235b3"
+migrations_dir = "migrations"

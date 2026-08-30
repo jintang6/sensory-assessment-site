@@ -1,1 +1,4 @@
 .wrangler/
+.dev.vars*
+.admin-token
+dist/
