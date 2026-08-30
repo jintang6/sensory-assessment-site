@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>知衡 · 团队工作台</title>
-  <meta name="description" content="本校康复评估部门的邀请制、去标识化云协作工作台。">
+  <meta name="description" content="本校康复评估部门的邀请制学生名单与去标识化评估协作工作台。">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./team.css">
 </head>
@@ -35,11 +35,11 @@
     <section class="auth-layout" id="authView">
       <div class="auth-context">
         <span class="eyebrow">部门内部使用</span>
-        <h1>把评估留在团队里，<br>把身份信息留在本机。</h1>
-        <p>云端只保存学生协作编号、结构化评分和自动分析。姓名、班级、学校、评估人员、背景与医疗注意事项不会进入团队库。</p>
+        <h1>名单只对团队可见，<br>评估内容保持去标识化。</h1>
+        <p>经学校授权的姓名、班级与内部协作编号单独保存在受限名单中。功能评分和自动分析仍按协作编号保存，不写入学籍号、联系方式、家庭住址等信息。</p>
         <div class="privacy-ledger" aria-label="云协作隐私范围">
           <div><i class="ledger-dot teal"></i><span><b>邀请制账号</b><small>没有有效邀请码无法注册</small></span></div>
-          <div><i class="ledger-dot gold"></i><span><b>固定去标识化</b><small>服务端再次删除直接身份字段</small></span></div>
+          <div><i class="ledger-dot gold"></i><span><b>名单分区保存</b><small>姓名班级与评估内容分开存储</small></span></div>
           <div><i class="ledger-dot blue"></i><span><b>版本与审计</b><small>每次同步保留版本和操作记录</small></span></div>
         </div>
       </div>
@@ -67,7 +67,7 @@
           <label class="team-field"><span>姓名或工作称呼</span><input id="registerName" autocomplete="name" maxlength="40" required placeholder="如：王老师"></label>
           <label class="team-field"><span>设置密码</span><input id="registerPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="至少12个字符"></label>
           <label class="team-field"><span>确认密码</span><input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="再次输入密码"></label>
-          <label class="registration-confirm"><input id="registerPrivacyConfirm" type="checkbox" required><span>我会使用内部协作编号，不把姓名、学籍号、联系方式等直接身份信息写入云端字段或观察记录。</span></label>
+          <label class="registration-confirm"><input id="registerPrivacyConfirm" type="checkbox" required><span>我只会在授权名单中使用学生姓名和班级，不把学籍号、联系方式、家庭住址等信息写入评估字段或观察记录。</span></label>
           <button class="button primary auth-submit" type="submit">使用邀请码注册</button>
         </form>
         <div class="form-error" id="registerError" role="alert"></div>
@@ -78,12 +78,12 @@
     <section class="team-dashboard" id="dashboardView" hidden>
       <div class="dashboard-topline">
         <div>
-          <span class="eyebrow">去标识化协作空间</span>
+          <span class="eyebrow">校内受限协作空间</span>
           <h1 id="teamName">本校康复评估部门</h1>
           <p><span id="memberGreeting">—</span><span class="role-chip" id="memberRole">—</span></p>
         </div>
         <div class="dashboard-actions">
-          <span class="privacy-badge"><i></i>固定去标识化</span>
+          <span class="privacy-badge"><i></i>受限名单 · 评估去标识化</span>
           <button class="button quiet" id="refreshTeamBtn" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v6h-6M4 18v-6h6M18.5 9A7 7 0 0 0 6.4 6.4L4 9m16 6-2.4 2.6A7 7 0 0 1 5.5 15"/></svg>
             刷新
@@ -96,12 +96,43 @@
       </div>
 
       <nav class="team-tabs" id="teamTabs" aria-label="团队工作台页面">
-        <button class="active" type="button" data-team-tab="records">学生档案</button>
+        <button class="active" type="button" data-team-tab="roster">学生名单</button>
+        <button type="button" data-team-tab="records">评估档案</button>
         <button type="button" data-team-tab="members" id="membersTabBtn" hidden>成员与邀请</button>
         <button type="button" data-team-tab="audit" id="auditTabBtn" hidden>审计记录</button>
       </nav>
 
-      <section class="team-tab-panel active" data-team-panel="records">
+      <section class="team-tab-panel active" data-team-panel="roster">
+        <div class="team-metrics" aria-label="学生名单指标">
+          <div class="team-metric accent"><span>在册学生</span><strong id="teamStudentCount">0</strong><small>当前授权名单</small></div>
+          <div class="team-metric"><span>已有评估</span><strong id="teamAssessedStudentCount">0</strong><small>至少保存1次</small></div>
+          <div class="team-metric"><span>待开始评估</span><strong id="teamPendingStudentCount">0</strong><small>尚无团队记录</small></div>
+          <div class="team-metric"><span>班级</span><strong id="teamClassCount">0</strong><small>当前在册班级</small></div>
+        </div>
+
+        <section class="team-panel roster-panel">
+          <div class="panel-toolbar">
+            <div><span class="eyebrow">本校授权名单</span><h2>学生与评估进度</h2></div>
+            <div class="roster-toolbar-actions">
+              <label class="team-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                <input id="teamRosterSearch" type="search" placeholder="搜索姓名、班级或协作编号">
+              </label>
+              <label class="visually-hidden" for="teamRosterClassFilter">筛选班级</label>
+              <select class="team-select" id="teamRosterClassFilter"><option value="">全部班级</option></select>
+            </div>
+          </div>
+          <div class="team-table-scroll">
+            <table class="team-table roster-table">
+              <thead><tr><th>姓名</th><th>班级</th><th>协作编号</th><th>评估状态</th><th>最近评估</th><th>操作</th></tr></thead>
+              <tbody id="teamRosterTableBody"></tbody>
+            </table>
+          </div>
+          <div class="team-empty" id="teamRosterEmpty" hidden>没有符合条件的学生</div>
+        </section>
+      </section>
+
+      <section class="team-tab-panel" data-team-panel="records">
         <div class="team-metrics" aria-label="团队协作指标">
           <div class="team-metric accent"><span>云端档案</span><strong id="teamRecordCount">0</strong><small>仅协作编号</small></div>
           <div class="team-metric"><span>今日更新</span><strong id="teamTodayCount">0</strong><small>新增与修订</small></div>
@@ -115,12 +146,12 @@
               <div><span class="eyebrow">学生协作档案</span><h2>最近评估</h2></div>
               <label class="team-search">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-                <input id="teamRecordSearch" type="search" placeholder="搜索协作编号或发展需要">
+                <input id="teamRecordSearch" type="search" placeholder="搜索姓名、班级、协作编号或发展需要">
               </label>
             </div>
             <div class="team-table-scroll">
               <table class="team-table">
-                <thead><tr><th>协作编号</th><th>主要发展需要</th><th>评估日期</th><th>综合分</th><th>完成度</th><th>版本</th><th>最后更新</th><th>操作</th></tr></thead>
+                <thead><tr><th>学生</th><th>班级</th><th>主要发展需要</th><th>评估日期</th><th>综合分</th><th>完成度</th><th>版本</th><th>最后更新</th><th>操作</th></tr></thead>
                 <tbody id="teamRecordTableBody"></tbody>
               </table>
             </div>
@@ -175,8 +206,9 @@
       </section>
 
       <footer class="team-privacy-footer">
-        <div><strong>云端保存</strong><span>协作编号、功能评分、支持等级、自动分析与版本记录</span></div>
-        <div><strong>云端排除</strong><span>姓名、班级、学校、评估人、背景和医疗注意事项</span></div>
+        <div><strong>受限名单</strong><span>姓名、班级与内部协作编号，仅本团队登录成员可见</span></div>
+        <div><strong>评估数据</strong><span>评分、支持等级与分析按协作编号去标识化保存</span></div>
+        <div><strong>仍不保存</strong><span>学籍号、联系方式、家庭住址、背景与医疗注意事项</span></div>
         <div><strong>最后刷新</strong><span id="teamFreshness">—</span></div>
       </footer>
     </section>
@@ -184,7 +216,7 @@
 
   <dialog class="modal team-record-dialog" id="teamRecordDialog">
     <div class="modal-head">
-      <div><span class="eyebrow">去标识化团队档案</span><h2 id="teamRecordDialogTitle">评估详情</h2></div>
+      <div><span class="eyebrow">团队评估档案</span><h2 id="teamRecordDialogTitle">评估详情</h2></div>
       <button class="icon-button close-team-record" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="modal-body team-record-detail" id="teamRecordDetail"></div>

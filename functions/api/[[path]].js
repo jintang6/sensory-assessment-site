@@ -13,6 +13,7 @@ const INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const INVITE_CODE_PATTERN = /^KFB[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/;
 const TEAM_ROLES = new Set(["admin", "evaluator", "viewer"]);
 const TEAM_MEMBER_STATUSES = new Set(["active", "disabled"]);
+let teamRosterSchemaReady = false;
 
 function allowedOrigin(request, env) {
   const origin = request.headers.get("Origin");
@@ -439,6 +440,35 @@ function auditStatement(env, userId, action, targetType, targetId = null, metada
   `).bind(userId || null, action, targetType, targetId || null, JSON.stringify(metadata));
 }
 
+async function ensureTeamRosterSchema(env) {
+  if (teamRosterSchemaReady) return;
+  await env.DB.batch([
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS team_students (
+        id TEXT PRIMARY KEY,
+        student_code TEXT NOT NULL UNIQUE,
+        student_name TEXT NOT NULL,
+        class_name TEXT NOT NULL,
+        grade_name TEXT NOT NULL DEFAULT '',
+        school_year TEXT NOT NULL DEFAULT '',
+        roster_order INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+        created_by_user_id TEXT NOT NULL REFERENCES team_members (user_id),
+        updated_by_user_id TEXT NOT NULL REFERENCES team_members (user_id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (student_name, class_name, school_year)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_team_students_class_order
+      ON team_students(status, school_year, class_name, roster_order, student_name)
+    `),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_team_students_name ON team_students(student_name)")
+  ]);
+  teamRosterSchemaReady = true;
+}
+
 async function authPost(auth, request, pathname, body = {}) {
   const url = new URL(request.url);
   url.pathname = pathname;
@@ -661,6 +691,100 @@ async function handleAdminBootstrapInvite(request, env) {
   return json(request, env, { ok: true, invite }, 201);
 }
 
+async function handleAdminTeamRosterImport(request, env) {
+  const denied = await requireAdmin(request, env);
+  if (denied) return denied;
+  const body = await parseBody(request, 80_000);
+  if (!Array.isArray(body.students) || !body.students.length || body.students.length > 200) {
+    return json(request, env, { error: "学生名单须包含1至200人" }, 400);
+  }
+
+  await ensureTeamRosterSchema(env);
+  const administrator = await env.DB.prepare(`
+    SELECT user_id FROM team_members
+    WHERE role = 'admin' AND status = 'active'
+    ORDER BY created_at
+    LIMIT 1
+  `).first();
+  if (!administrator?.user_id) return json(request, env, { error: "团队尚未建立管理员账号" }, 409);
+
+  const seenCodes = new Set();
+  const seenStudents = new Set();
+  const students = [];
+  for (let index = 0; index < body.students.length; index += 1) {
+    const raw = body.students[index] && typeof body.students[index] === "object" ? body.students[index] : {};
+    const studentCode = normalizeTeamStudentCode(raw.studentCode);
+    const studentName = cleanString(raw.studentName, 40);
+    const className = cleanString(raw.className, 40);
+    const gradeName = cleanString(raw.gradeName, 30);
+    const schoolYear = cleanString(raw.schoolYear, 20);
+    const rosterOrder = Number(raw.rosterOrder);
+    const studentKey = `${studentName}\u0000${className}\u0000${schoolYear}`;
+    if (!studentCode || studentName.length < 2 || className.length < 2 || !/^\d{4}-\d{4}$/.test(schoolYear)
+      || !Number.isInteger(rosterOrder) || rosterOrder < 0 || rosterOrder > 999) {
+      return json(request, env, { error: `第${index + 1}名学生的姓名、班级、学年、序号或协作编号无效` }, 400);
+    }
+    if (seenCodes.has(studentCode) || seenStudents.has(studentKey)) {
+      return json(request, env, { error: `第${index + 1}名学生与名单内其他记录重复` }, 400);
+    }
+    seenCodes.add(studentCode);
+    seenStudents.add(studentKey);
+    students.push({
+      id: crypto.randomUUID(),
+      studentCode,
+      studentName,
+      className,
+      gradeName,
+      schoolYear,
+      rosterOrder
+    });
+  }
+
+  const source = cleanString(body.source, 80) || "authorized_admin_import";
+  const classNames = [...new Set(students.map((student) => student.className))];
+  const statements = students.map((student) => env.DB.prepare(`
+    INSERT INTO team_students (
+      id, student_code, student_name, class_name, grade_name, school_year, roster_order,
+      status, created_by_user_id, updated_by_user_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'), datetime('now'))
+    ON CONFLICT(student_code) DO UPDATE SET
+      student_name = excluded.student_name,
+      class_name = excluded.class_name,
+      grade_name = excluded.grade_name,
+      school_year = excluded.school_year,
+      roster_order = excluded.roster_order,
+      status = 'active',
+      updated_by_user_id = excluded.updated_by_user_id,
+      updated_at = datetime('now')
+  `).bind(
+    student.id, student.studentCode, student.studentName, student.className,
+    student.gradeName, student.schoolYear, student.rosterOrder,
+    administrator.user_id, administrator.user_id
+  ));
+  statements.push(auditStatement(env, administrator.user_id, "student.roster_import", "student_roster", null, {
+    count: students.length,
+    classes: classNames,
+    schoolYear: students[0].schoolYear,
+    source
+  }));
+  await env.DB.batch(statements);
+
+  const total = await env.DB.prepare("SELECT COUNT(*) AS count FROM team_students WHERE status = 'active'").first();
+  const classResult = await env.DB.prepare(`
+    SELECT class_name, COUNT(*) AS count
+    FROM team_students
+    WHERE status = 'active'
+    GROUP BY class_name
+    ORDER BY class_name
+  `).all();
+  return json(request, env, {
+    ok: true,
+    imported: students.length,
+    activeStudents: Number(total?.count || 0),
+    classes: classResult.results || []
+  }, 201);
+}
+
 async function handleCreateTeamInvite(request, env) {
   const identity = await teamIdentity(request, env);
   const denied = requireRole(request, env, identity, ["admin"]);
@@ -696,7 +820,7 @@ async function handleTeamSession(request, env) {
     },
     team: {
       name: cleanString(env.TEAM_NAME, 100) || "本校康复评估部门",
-      privacyMode: "deidentified"
+      privacyMode: "restricted_roster"
     }
   });
 }
@@ -729,20 +853,47 @@ async function handleChangePassword(request, env) {
 async function handleTeamSummary(request, env) {
   const identity = await teamIdentity(request, env);
   if (identity.denied) return identity.denied;
+  await ensureTeamRosterSchema(env);
   const isTeamAdmin = identity.member.role === "admin";
-  const [metrics, recordsResult, analysisResult, memberResult, inviteResult, auditResult] = await Promise.all([
+  const [metrics, studentResult, recordsResult, analysisResult, memberResult, inviteResult, auditResult] = await Promise.all([
     env.DB.prepare(`
       SELECT
+        (SELECT COUNT(*) FROM team_students WHERE status = 'active') AS total_students,
+        (SELECT COUNT(DISTINCT class_name) FROM team_students WHERE status = 'active') AS class_count,
+        (SELECT COUNT(*) FROM team_students student
+          WHERE student.status = 'active' AND EXISTS (
+            SELECT 1 FROM team_assessments assessment
+            WHERE assessment.student_code = student.student_code AND assessment.deleted_at IS NULL
+          )) AS assessed_students,
         (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL) AS total_records,
         (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL AND date(updated_at) = date('now')) AS today_updates,
         (SELECT COUNT(*) FROM team_members WHERE status = 'active') AS active_members,
         (SELECT COUNT(*) FROM team_members WHERE status = 'active' AND last_active_at >= datetime('now', '-10 minutes')) AS online_members
     `).first(),
     env.DB.prepare(`
+      SELECT s.id, s.student_code, s.student_name, s.class_name, s.grade_name, s.school_year,
+             s.roster_order, s.created_at, s.updated_at,
+             a.id AS assessment_id, a.assessment_date, a.overall_score, a.coverage,
+             a.updated_at AS assessment_updated_at
+      FROM team_students s
+      LEFT JOIN team_assessments a ON a.id = (
+        SELECT latest.id
+        FROM team_assessments latest
+        WHERE latest.student_code = s.student_code AND latest.deleted_at IS NULL
+        ORDER BY datetime(latest.updated_at) DESC
+        LIMIT 1
+      )
+      WHERE s.status = 'active'
+      ORDER BY s.school_year DESC, s.class_name, s.roster_order, s.student_name
+      LIMIT 500
+    `).all(),
+    env.DB.prepare(`
       SELECT a.id, a.client_record_id, a.student_code, a.age_text, a.gender, a.primary_need,
              a.assessment_date, a.overall_score, a.coverage, a.version, a.created_at, a.updated_at,
+             student.student_name, student.class_name,
              owner.display_name AS owner_name, updater.display_name AS updated_by_name
       FROM team_assessments a
+      LEFT JOIN team_students student ON student.student_code = a.student_code AND student.status = 'active'
       LEFT JOIN team_members owner ON owner.user_id = a.owner_user_id
       LEFT JOIN team_members updater ON updater.user_id = a.updated_by_user_id
       WHERE a.deleted_at IS NULL
@@ -768,7 +919,7 @@ async function handleTeamSummary(request, env) {
 
   return json(request, env, {
     generatedAt: new Date().toISOString(),
-    team: { name: cleanString(env.TEAM_NAME, 100) || "本校康复评估部门", privacyMode: "deidentified" },
+    team: { name: cleanString(env.TEAM_NAME, 100) || "本校康复评估部门", privacyMode: "restricted_roster" },
     currentUser: {
       id: identity.member.user_id,
       email: identity.member.email,
@@ -777,14 +928,16 @@ async function handleTeamSummary(request, env) {
       roleLabel: roleLabel(identity.member.role)
     },
     metrics: metrics || {},
+    students: studentResult.results || [],
     records: recordsResult.results || [],
     domainAverages: aggregateDomains(analysisResult.results || []),
     members: memberResult.results || [],
     invites: (inviteResult.results || []).map((row) => ({ ...row, roleLabel: roleLabel(row.role) })),
     audit: (auditResult.results || []).map((row) => ({ ...row, metadata: parseJson(row.metadata_json), metadata_json: undefined })),
     privacy: {
-      mode: "团队云端仅保存去标识化记录",
-      excluded: ["学生姓名", "班级与学校", "评估人与复核人", "背景资料", "医疗注意事项"]
+      mode: "受限学生名单与去标识化评估分开保存",
+      rosterFields: ["学生姓名", "班级", "内部协作编号"],
+      excluded: ["学籍号", "联系方式", "家庭住址", "评估人与复核人", "背景资料", "医疗注意事项"]
     }
   });
 }
@@ -792,10 +945,14 @@ async function handleTeamSummary(request, env) {
 async function handleTeamRecord(request, env, id) {
   const identity = await teamIdentity(request, env);
   if (identity.denied) return identity.denied;
+  await ensureTeamRosterSchema(env);
   const record = await env.DB.prepare(`
     SELECT a.id, a.client_record_id, a.student_code, a.version, a.assessment_json, a.analysis_json,
-           a.created_at, a.updated_at, owner.display_name AS owner_name, updater.display_name AS updated_by_name
+           a.created_at, a.updated_at, student.student_name, student.class_name,
+           student.grade_name, student.school_year,
+           owner.display_name AS owner_name, updater.display_name AS updated_by_name
     FROM team_assessments a
+    LEFT JOIN team_students student ON student.student_code = a.student_code AND student.status = 'active'
     LEFT JOIN team_members owner ON owner.user_id = a.owner_user_id
     LEFT JOIN team_members updater ON updater.user_id = a.updated_by_user_id
     WHERE a.id = ? AND a.deleted_at IS NULL
@@ -809,11 +966,15 @@ async function handleTeamRecord(request, env, id) {
     ORDER BY v.version DESC LIMIT 30
   `).bind(record.id).all();
   await auditStatement(env, identity.member.user_id, "assessment.view", "assessment", record.id).run();
+  const assessment = parseJson(record.assessment_json);
+  assessment.studentName = record.student_name || "";
+  assessment.className = record.class_name || "";
   return json(request, env, {
     ...record,
-    student_label: record.student_code,
-    is_deidentified: 1,
-    assessment: parseJson(record.assessment_json),
+    student_label: record.student_name || record.student_code,
+    identity_scope: record.student_name ? "restricted_roster" : "deidentified",
+    is_deidentified: record.student_name ? 0 : 1,
+    assessment,
     analysis: parseJson(record.analysis_json),
     assessment_json: undefined,
     analysis_json: undefined,
@@ -1218,6 +1379,7 @@ export async function onRequestPost(context) {
     if (path === "/api/team/assessments") return handleTeamAssessment(request, env);
     if (path === "/api/team/invites") return handleCreateTeamInvite(request, env);
     if (path === "/api/admin/team/invites") return handleAdminBootstrapInvite(request, env);
+    if (path === "/api/admin/team/roster/import") return handleAdminTeamRosterImport(request, env);
     if (path.startsWith("/api/team/members/")) return handleUpdateTeamMember(request, env, path.split("/").pop());
     if (path === "/api/analytics/visit") return handleVisit(request, env, false);
     if (path === "/api/analytics/heartbeat") return handleVisit(request, env, true);

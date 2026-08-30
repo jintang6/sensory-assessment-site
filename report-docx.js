@@ -84,7 +84,9 @@ export function buildAssessmentReportDocument(row, api) {
   const title = row?.student_label || record.studentName || record.studentCode || "评估记录";
   const organizationName = valueOr(record.organizationName, "知衡特殊教育康复评估");
   const documentNumber = reportNumber(row, record);
-  const privacyMode = Number(row?.is_deidentified) === 1 ? "去标识化记录" : "完整记录";
+  const privacyMode = row?.identity_scope === "restricted_roster"
+    ? "团队受限名单关联记录"
+    : Number(row?.is_deidentified) === 1 ? "去标识化记录" : "完整记录";
   const impactLabels = ["无明显影响", "轻度影响", "中度影响", "显著影响"];
   const font = { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_CJK, cs: FONT_CJK, hint: "eastAsia" };
   const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: COLORS.line };

@@ -19,6 +19,9 @@ const teamRecordDialog = document.getElementById("teamRecordDialog");
 const accountDialog = document.getElementById("accountDialog");
 const recordTableBody = document.getElementById("teamRecordTableBody");
 const recordSearch = document.getElementById("teamRecordSearch");
+const rosterTableBody = document.getElementById("teamRosterTableBody");
+const rosterSearch = document.getElementById("teamRosterSearch");
+const rosterClassFilter = document.getElementById("teamRosterClassFilter");
 
 let summary = null;
 let currentRecord = null;
@@ -138,10 +141,53 @@ async function loadSession() {
 }
 
 function renderMetrics(metrics) {
+  const totalStudents = Number(metrics.total_students) || 0;
+  const assessedStudents = Math.min(totalStudents, Number(metrics.assessed_students) || 0);
+  document.getElementById("teamStudentCount").textContent = String(totalStudents);
+  document.getElementById("teamAssessedStudentCount").textContent = String(assessedStudents);
+  document.getElementById("teamPendingStudentCount").textContent = String(Math.max(0, totalStudents - assessedStudents));
+  document.getElementById("teamClassCount").textContent = String(Number(metrics.class_count) || 0);
   document.getElementById("teamRecordCount").textContent = String(metrics.total_records || 0);
   document.getElementById("teamTodayCount").textContent = String(metrics.today_updates || 0);
   document.getElementById("teamMemberCount").textContent = String(metrics.active_members || 0);
   document.getElementById("teamOnlineCount").textContent = String(metrics.online_members || 0);
+}
+
+function renderRoster() {
+  const allStudents = summary?.students || [];
+  const previousClass = rosterClassFilter.value;
+  const classes = [...new Set(allStudents.map((student) => student.class_name).filter(Boolean))];
+  rosterClassFilter.innerHTML = '<option value="">全部班级</option>'
+    + classes.map((className) => `<option value="${escapeHtml(className)}">${escapeHtml(className)}</option>`).join("");
+  if (classes.includes(previousClass)) rosterClassFilter.value = previousClass;
+
+  const query = rosterSearch.value.trim().toLowerCase();
+  const selectedClass = rosterClassFilter.value;
+  const canEdit = ["admin", "evaluator"].includes(summary?.currentUser?.role);
+  const students = allStudents.filter((student) => {
+    if (selectedClass && student.class_name !== selectedClass) return false;
+    return [student.student_name, student.class_name, student.student_code]
+      .join(" ").toLowerCase().includes(query);
+  });
+
+  document.getElementById("teamRosterEmpty").hidden = students.length > 0;
+  rosterTableBody.innerHTML = students.map((student) => {
+    const assessed = Boolean(student.assessment_id);
+    const action = canEdit
+      ? `<button class="table-action" type="button" data-start-student-id="${escapeHtml(student.id)}">${assessed ? "继续评估" : "开始评估"}</button>`
+      : assessed
+        ? `<button class="table-action" type="button" data-team-record-id="${escapeHtml(student.assessment_id)}">查看评估</button>`
+        : "—";
+    return `
+      <tr>
+        <td class="student-name-cell"><strong>${escapeHtml(student.student_name)}</strong><small>${escapeHtml(student.grade_name || "")}</small></td>
+        <td>${escapeHtml(student.class_name)}</td>
+        <td><code>${escapeHtml(student.student_code)}</code></td>
+        <td><span class="roster-status ${assessed ? "assessed" : ""}">${assessed ? `已评估 ${Number(student.coverage) || 0}%` : "待评估"}</span></td>
+        <td>${assessed ? escapeHtml(student.assessment_date || formatDateTime(student.assessment_updated_at)) : "—"}</td>
+        <td>${action}</td>
+      </tr>`;
+  }).join("");
 }
 
 function scoreClass(value) {
@@ -151,12 +197,13 @@ function scoreClass(value) {
 
 function renderRecords() {
   const query = recordSearch.value.trim().toLowerCase();
-  const records = (summary?.records || []).filter((row) => [row.student_code, row.primary_need, row.assessment_date, row.owner_name]
+  const records = (summary?.records || []).filter((row) => [row.student_name, row.class_name, row.student_code, row.primary_need, row.assessment_date, row.owner_name]
     .join(" ").toLowerCase().includes(query));
   document.getElementById("teamRecordEmpty").hidden = records.length > 0;
   recordTableBody.innerHTML = records.map((row) => `
     <tr>
-      <td><strong>${escapeHtml(row.student_code)}</strong></td>
+      <td class="student-name-cell"><strong>${escapeHtml(row.student_name || row.student_code)}</strong>${row.student_name ? `<small>${escapeHtml(row.student_code)}</small>` : ""}</td>
+      <td>${escapeHtml(row.class_name || "—")}</td>
       <td>${escapeHtml(row.primary_need || "—")}</td>
       <td>${escapeHtml(row.assessment_date || "—")}</td>
       <td><span class="score-pill ${scoreClass(row.overall_score)}">${row.overall_score == null ? "—" : Number(row.overall_score).toFixed(1)}</span></td>
@@ -222,7 +269,8 @@ const auditLabels = {
   "invite.accept": "接受成员邀请",
   "assessment.sync": "同步评估版本",
   "assessment.view": "查看评估档案",
-  "assessment.delete": "删除评估档案"
+  "assessment.delete": "删除评估档案",
+  "student.roster_import": "导入学生名单"
 };
 
 function renderAudit() {
@@ -249,6 +297,7 @@ function renderSummary() {
   document.getElementById("deleteTeamRecordBtn").hidden = !isAdmin;
   document.getElementById("openInAssessmentBtn").hidden = !canEdit;
   renderMetrics(summary.metrics || {});
+  renderRoster();
   renderRecords();
   renderDomainChart();
   if (isAdmin) {
@@ -285,9 +334,13 @@ function renderRecordDetail(row) {
   const analysis = row.analysis || {};
   const domains = Object.values(analysis.domainScores || {}).sort((a, b) => Number(a.score) - Number(b.score));
   const versions = row.versions || [];
-  document.getElementById("teamRecordDialogTitle").textContent = `${row.student_code} · 感觉统合功能评估`;
+  document.getElementById("teamRecordDialogTitle").textContent = `${row.student_name || row.student_code} · 感觉统合功能评估`;
   document.getElementById("teamRecordDetail").innerHTML = `
     <div class="team-record-meta">
+      <div><span>学生姓名</span><strong>${escapeHtml(row.student_name || "—")}</strong></div>
+      <div><span>班级</span><strong>${escapeHtml(row.class_name || "—")}</strong></div>
+      <div><span>年级</span><strong>${escapeHtml(row.grade_name || "—")}</strong></div>
+      <div><span>学年</span><strong>${escapeHtml(row.school_year || "—")}</strong></div>
       <div><span>学生协作编号</span><strong>${escapeHtml(row.student_code)}</strong></div>
       <div><span>年龄</span><strong>${escapeHtml(record.age || "—")}</strong></div>
       <div><span>性别</span><strong>${escapeHtml(record.gender || "—")}</strong></div>
@@ -305,6 +358,37 @@ function renderRecordDetail(row) {
     ${detailList("干预与环境支持建议", analysis.strategies)}
     ${detailList("安全与解释提醒", analysis.alerts)}
     <section class="detail-section"><h3>版本记录</h3><div class="version-list">${versions.map((version) => `<span>v${version.version} · ${escapeHtml(version.changed_by_name || "成员")} · ${escapeHtml(formatDateTime(version.created_at))}</span>`).join("")}</div></section>`;
+}
+
+async function startRosterAssessment(studentId) {
+  const student = (summary?.students || []).find((row) => row.id === studentId);
+  if (!student) return;
+  try {
+    let record = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `record-${Date.now().toString(36)}`,
+      studentName: student.student_name,
+      studentCode: student.student_code,
+      className: student.class_name,
+      organizationName: summary.team.name,
+      assessmentDate: new Date().toISOString().slice(0, 10),
+      domains: {}
+    };
+    if (student.assessment_id) {
+      const existing = await api(`/api/team/records/${encodeURIComponent(student.assessment_id)}`);
+      record = {
+        ...existing.assessment,
+        id: existing.client_record_id,
+        studentName: student.student_name,
+        studentCode: student.student_code,
+        className: student.class_name,
+        organizationName: summary.team.name
+      };
+    }
+    sessionStorage.setItem(TEAM_RECORD_TRANSFER_KEY, JSON.stringify(record));
+    location.href = "./index.html?source=team&new=1";
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 async function openRecord(id) {
@@ -349,9 +433,9 @@ function openRecordInAssessment() {
   const record = {
     ...currentRecord.assessment,
     id: currentRecord.client_record_id,
-    studentName: "",
-    className: "",
-    organizationName: "",
+    studentName: currentRecord.student_name || currentRecord.assessment.studentName || "",
+    className: currentRecord.class_name || currentRecord.assessment.className || "",
+    organizationName: summary?.team?.name || "",
     evaluator: "",
     reviewer: "",
     background: "",
@@ -484,6 +568,17 @@ document.getElementById("teamLogoutBtn").addEventListener("click", async () => {
 document.getElementById("refreshTeamBtn").addEventListener("click", () => loadSummary());
 document.getElementById("newAssessmentBtn").addEventListener("click", () => { location.href = "./index.html?source=team&new=1"; });
 recordSearch.addEventListener("input", renderRecords);
+rosterSearch.addEventListener("input", renderRoster);
+rosterClassFilter.addEventListener("change", renderRoster);
+rosterTableBody.addEventListener("click", (event) => {
+  const startButton = event.target.closest("[data-start-student-id]");
+  if (startButton) {
+    startRosterAssessment(startButton.dataset.startStudentId);
+    return;
+  }
+  const recordButton = event.target.closest("[data-team-record-id]");
+  if (recordButton) openRecord(recordButton.dataset.teamRecordId);
+});
 recordTableBody.addEventListener("click", (event) => {
   const button = event.target.closest("[data-team-record-id]");
   if (button) openRecord(button.dataset.teamRecordId);

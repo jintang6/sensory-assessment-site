@@ -2,10 +2,11 @@ import { readFile } from "node:fs/promises";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
-const [migration, inviteMigration, reservationMigration, api, auth, index, app, team, admin] = await Promise.all([
+const [migration, inviteMigration, reservationMigration, rosterMigration, api, auth, index, app, team, admin] = await Promise.all([
   read("migrations/0003_team_collaboration.sql"),
   read("migrations/0004_invitation_codes.sql"),
   read("migrations/0005_invite_reservations.sql"),
+  read("migrations/0006_team_student_roster.sql"),
   read("functions/api/[[path]].js"),
   read("functions/_lib/auth.js"),
   read("index.html"),
@@ -38,6 +39,10 @@ assert(reservationMigration.includes("reservation_id TEXT"), "single-use invitat
 assert(migration.includes("team_assessment_versions"), "assessment version table is missing");
 assert(migration.includes("team_audit_logs"), "team audit table is missing");
 assert(migration.includes('"issuer" TEXT NOT NULL'), "Better Auth 1.7 account issuer column is missing");
+assert(rosterMigration.includes("CREATE TABLE IF NOT EXISTS team_students"), "restricted team roster table is missing");
+assert(rosterMigration.includes("student_name TEXT NOT NULL"), "team roster must store the authorized student name");
+assert(rosterMigration.includes("class_name TEXT NOT NULL"), "team roster must store the authorized class name");
+assert(rosterMigration.includes("REFERENCES team_members (user_id)"), "team roster changes must be attributable to a member");
 
 assert(auth.includes("disableIpTracking: true"), "authentication IP tracking must stay disabled");
 assert(auth.includes("minPasswordLength: 12"), "minimum team password length must stay at 12");
@@ -56,6 +61,11 @@ assert(!api.includes("inviteUrl"), "invitation codes must not be placed in URLs"
 assert(!api.includes('path.startsWith("/api/team/invites/")'), "invitation codes must not be accepted in URL paths");
 assert(!api.includes('path === "/api/auth/sign-up/email"'), "public Better Auth sign-up must not be routed");
 assert(api.includes("team_assessment_versions"), "team sync must persist a version snapshot");
+assert(api.includes("LEFT JOIN team_students student"), "team assessment views must resolve authorized roster identity separately");
+assert(api.includes('privacyMode: "restricted_roster"'), "team privacy mode must disclose the restricted roster");
+assert(api.includes("async function ensureTeamRosterSchema"), "team roster needs a safe runtime migration fallback");
+assert(api.includes('path === "/api/admin/team/roster/import"'), "protected roster import endpoint is missing");
+assert(api.includes("async function handleAdminTeamRosterImport"), "admin roster import handler is missing");
 
 assert(!index.includes('value="full"'), "the full-record sync option must not return to the assessment UI");
 assert(app.includes('/api/team/assessments'), "assessment sync must target the authenticated team endpoint");
