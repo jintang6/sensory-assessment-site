@@ -415,6 +415,47 @@
   font-weight: 750;
 }
 
+.record-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.table-export-button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid #bad8dc;
+  border-radius: 5px;
+  background: #edf8f7;
+  color: #175f64;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.table-export-button:hover {
+  border-color: #78b9ba;
+  background: #def1ef;
+}
+
+.table-export-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.table-export-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .table-empty {
   padding: 30px;
   color: var(--ink-faint);

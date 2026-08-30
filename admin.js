@@ -208,7 +208,15 @@ function renderRecordTable() {
       <td>${number(record.coverage)}%</td>
       <td><span class="privacy-badge ${Number(record.is_deidentified) === 1 ? "deidentified" : "full"}">${Number(record.is_deidentified) === 1 ? "去标识化" : "完整记录"}</span></td>
       <td>${formatDateTime(record.updated_at)}</td>
-      <td><button class="link-button" type="button" data-record-id="${escapeHtml(record.id)}">查看</button></td>
+      <td>
+        <div class="record-row-actions">
+          <button class="link-button" type="button" data-record-action="view" data-record-id="${escapeHtml(record.id)}">查看</button>
+          <button class="table-export-button" type="button" data-record-action="export" data-record-id="${escapeHtml(record.id)}" aria-label="导出 ${escapeHtml(record.student_label || "该学生")} 的 DOCX 评估报告">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+            <span>导出 DOCX</span>
+          </button>
+        </div>
+      </td>
     </tr>
   `).join("");
 }
@@ -279,17 +287,33 @@ async function exportSelectedRecordReport() {
     return;
   }
   const button = document.getElementById("exportRecordReportBtn");
+  await exportRecordReport(selectedRecord, button);
+}
+
+async function exportRecordReport(row, button) {
   button.disabled = true;
   showToast("正在生成 Word 评估报告…");
   try {
-    const documentFile = buildAssessmentReportDocument(selectedRecord, globalThis.docx);
+    const documentFile = buildAssessmentReportDocument(row, globalThis.docx);
     const blob = await globalThis.docx.Packer.toBlob(documentFile);
-    downloadFile(assessmentReportFilename(selectedRecord), blob, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    downloadFile(assessmentReportFilename(row), blob, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     showToast("DOCX 评估报告已导出。 ");
   } catch (error) {
     showToast(error.message || "DOCX 报告生成失败。 ");
   } finally {
     button.disabled = false;
+  }
+}
+
+async function exportRecordById(id, button) {
+  button.disabled = true;
+  showToast("正在读取学生评估记录…");
+  try {
+    const row = await api(`/api/admin/records/${encodeURIComponent(id)}`);
+    await exportRecordReport(row, button);
+  } catch (error) {
+    button.disabled = false;
+    showToast(error.message || "读取评估记录失败。 ");
   }
 }
 
@@ -338,7 +362,12 @@ function attachEvents() {
   document.getElementById("privacyFilter").addEventListener("change", renderRecordTable);
   document.getElementById("recordTableBody").addEventListener("click", (event) => {
     const button = event.target.closest("[data-record-id]");
-    if (button) openRecord(button.dataset.recordId);
+    if (!button) return;
+    if (button.dataset.recordAction === "export") {
+      exportRecordById(button.dataset.recordId, button);
+      return;
+    }
+    openRecord(button.dataset.recordId);
   });
   document.querySelectorAll(".close-record-dialog").forEach((button) => button.addEventListener("click", () => recordDialog.close()));
   document.getElementById("deleteCloudRecordBtn").addEventListener("click", deleteSelectedRecord);
