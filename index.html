@@ -456,7 +456,7 @@
     <div class="modal-head">
       <div>
         <span class="eyebrow">微信与移动端</span>
-        <h2>发送 Word 评估报告</h2>
+        <h2>生成安全报告链接</h2>
       </div>
       <button class="icon-button close-dialog" type="button" aria-label="关闭">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
@@ -467,10 +467,23 @@
         <div class="word-file-icon" aria-hidden="true">W</div>
         <div><strong id="shareReportFilename">正在生成报告…</strong><span id="shareReportStatus">正在整理评估结果与正式版式</span></div>
       </div>
-      <p class="share-report-note" id="shareReportNote">报告生成后，可通过系统分享面板选择微信联系人或其他应用。</p>
+      <p class="share-report-note" id="shareReportNote">微信无法稳定转发网页生成的临时 Word 文件。报告生成后，可创建一个限时下载链接。</p>
+      <label class="authority-check report-share-consent" id="shareReportConsentWrap">
+        <input id="shareReportConsent" type="checkbox">
+        <span><strong>我确认已获得报告分享授权</strong><small>报告将通过 HTTPS 上传并在云端临时保存24小时，仅持有随机链接的人可下载；到期后自动失效并清理。</small></span>
+      </label>
+      <section class="share-link-panel" id="shareReportLinkPanel" aria-live="polite" hidden>
+        <label for="shareReportLinkInput">24小时报告链接</label>
+        <div class="share-link-field">
+          <input id="shareReportLinkInput" type="text" readonly>
+          <button class="button primary" id="copyReportLinkBtn" type="button">复制链接</button>
+        </div>
+        <button class="button quiet share-link-system" id="shareReportLinkBtn" type="button">系统转发</button>
+        <p>在微信中推荐先复制链接，返回聊天后粘贴给联系人；对方打开链接即可下载 Word 报告。</p>
+      </section>
       <div class="modal-actions">
-        <button class="button quiet close-dialog" type="button">取消</button>
-        <button class="button primary" id="sendReportFileBtn" type="button" disabled>正在生成</button>
+        <button class="button quiet close-dialog" type="button">关闭</button>
+        <button class="button primary" id="createReportLinkBtn" type="button" disabled>正在生成</button>
       </div>
     </div>
   </dialog>

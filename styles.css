@@ -1806,6 +1806,82 @@ svg {
   line-height: 1.65;
 }
 
+.report-share-consent strong,
+.report-share-consent small {
+  display: block;
+}
+
+.report-share-consent strong {
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.report-share-consent small {
+  color: #7b5a2f;
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
+.share-link-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.share-link-panel > label,
+.share-link-panel > p {
+  grid-column: 1 / -1;
+}
+
+.share-link-panel > label {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.share-link-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.share-link-field input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 10px;
+}
+
+.share-link-system {
+  align-self: stretch;
+}
+
+.share-link-panel > p {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+@media (max-width: 540px) {
+  .share-link-panel,
+  .share-link-field {
+    grid-template-columns: 1fr;
+  }
+
+  .share-link-system,
+  .share-link-field .button {
+    width: 100%;
+  }
+}
+
 .button:disabled,
 .tool-button:disabled {
   cursor: not-allowed;

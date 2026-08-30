@@ -282,6 +282,7 @@ let lastAnalysis = null;
 let lastCloudSyncAt = cloudSettings.lastSyncedAt ? new Date(cloudSettings.lastSyncedAt).getTime() : 0;
 let lastSyncedSignature = "";
 let preparedReportFile = null;
+let preparedReportLink = null;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -971,57 +972,161 @@ async function exportDocxReport() {
   }
 }
 
-function canShareReportFile(file) {
-  try {
-    return Boolean(navigator.share && navigator.canShare?.({ files: [file] }));
-  } catch {
-    return false;
+function updateReportShareButton() {
+  const button = document.getElementById("createReportLinkBtn");
+  const consented = document.getElementById("shareReportConsent").checked;
+  button.disabled = !preparedReportFile || !consented || Boolean(preparedReportLink);
+}
+
+function reportExpiryText(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "24小时后";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("无法读取 Word 报告，请重新生成。"));
+    reader.onload = () => {
+      const encoded = String(reader.result || "").split(",")[1];
+      if (!encoded) reject(new Error("Word 报告编码失败，请重新生成。"));
+      else resolve(encoded);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function copyText(value) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fall through to the selection-based copy used by older WeChat webviews.
+    }
   }
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  input.setSelectionRange(0, input.value.length);
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  } finally {
+    input.remove();
+  }
+  return copied;
 }
 
 async function openShareReportDialog() {
   preparedReportFile = null;
+  preparedReportLink = null;
   document.getElementById("shareReportFilename").textContent = "正在生成报告…";
   document.getElementById("shareReportStatus").textContent = "正在整理评估结果与正式版式";
-  document.getElementById("shareReportNote").textContent = "报告生成后，可通过系统分享面板选择微信联系人或其他应用。";
-  const sendButton = document.getElementById("sendReportFileBtn");
-  sendButton.disabled = true;
-  sendButton.textContent = "正在生成";
+  document.getElementById("shareReportNote").textContent = "微信无法稳定转发网页生成的临时 Word 文件。报告生成后，可创建一个限时下载链接。";
+  document.getElementById("shareReportConsent").checked = false;
+  document.getElementById("shareReportConsent").disabled = false;
+  document.getElementById("shareReportConsentWrap").hidden = false;
+  document.getElementById("shareReportLinkPanel").hidden = true;
+  document.getElementById("shareReportLinkInput").value = "";
+  const createButton = document.getElementById("createReportLinkBtn");
+  createButton.hidden = false;
+  createButton.disabled = true;
+  createButton.textContent = "正在生成";
   shareReportDialog.showModal();
   try {
     preparedReportFile = await createCurrentDocxFile();
-    const shareSupported = canShareReportFile(preparedReportFile.file);
     document.getElementById("shareReportFilename").textContent = preparedReportFile.filename;
-    document.getElementById("shareReportStatus").textContent = "正式版 Word 文档已生成";
-    document.getElementById("shareReportNote").textContent = shareSupported
-      ? "点击下方按钮后，在系统分享面板中选择微信联系人或其他应用。"
-      : "当前微信或浏览器不支持网页直接发送 Word 文件，将先下载报告，再从微信文件中发送给联系人。";
-    sendButton.textContent = shareSupported ? "选择联系人或应用" : "下载 Word 文件";
-    sendButton.disabled = false;
+    document.getElementById("shareReportStatus").textContent = "正式版 Word 文档已在本机生成，尚未上传";
+    document.getElementById("shareReportNote").textContent = "勾选授权后生成24小时随机链接，再复制到微信聊天中发送。";
+    createButton.textContent = "生成24小时链接";
+    updateReportShareButton();
   } catch (error) {
     document.getElementById("shareReportFilename").textContent = "报告生成失败";
     document.getElementById("shareReportStatus").textContent = error.message || "请检查评估资料";
     document.getElementById("shareReportNote").textContent = "补充所需资料后可重新生成。";
-    sendButton.textContent = "无法发送";
+    document.getElementById("shareReportConsentWrap").hidden = true;
+    createButton.textContent = "无法生成";
   }
 }
 
-async function sendPreparedReportFile() {
+async function createPreparedReportLink() {
   if (!preparedReportFile) return;
-  const { file, filename } = preparedReportFile;
-  if (canShareReportFile(file)) {
-    try {
-      await navigator.share({ files: [file], title: filename, text: "感觉统合功能评估报告" });
-      shareReportDialog.close();
-      showToast("报告已交给系统分享面板。 ");
-      return;
-    } catch (error) {
-      if (error.name === "AbortError") return;
+  if (!document.getElementById("shareReportConsent").checked) {
+    showToast("请先确认已获得报告分享授权。 ");
+    return;
+  }
+  const button = document.getElementById("createReportLinkBtn");
+  button.disabled = true;
+  button.textContent = "正在安全上传";
+  document.getElementById("shareReportStatus").textContent = "正在创建24小时临时链接…";
+  try {
+    const fileBase64 = await blobToBase64(preparedReportFile.file);
+    const response = await fetch(`${API_ORIGIN}/api/reports/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        consent: true,
+        sessionId: getSessionId(),
+        filename: preparedReportFile.filename,
+        mimeType: DOCX_MIME,
+        fileBase64
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.shareUrl) throw new Error(payload.error || "临时链接生成失败，请稍后重试。 ");
+    preparedReportLink = payload;
+    document.getElementById("shareReportStatus").textContent = `链接有效至 ${reportExpiryText(payload.expiresAt)}`;
+    document.getElementById("shareReportNote").textContent = "报告已临时保存。请复制链接并返回微信聊天粘贴发送；对方打开后即可下载 Word 文件。";
+    document.getElementById("shareReportLinkInput").value = payload.shareUrl;
+    document.getElementById("shareReportLinkPanel").hidden = false;
+    document.getElementById("shareReportConsent").disabled = true;
+    document.getElementById("shareReportLinkBtn").hidden = IS_WECHAT || !navigator.share;
+    button.hidden = true;
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "重新生成链接";
+    document.getElementById("shareReportStatus").textContent = "临时链接生成失败";
+    document.getElementById("shareReportNote").textContent = error.message || "请检查网络后重试。";
+  }
+}
+
+async function copyPreparedReportLink() {
+  if (!preparedReportLink?.shareUrl) return;
+  const copied = await copyText(preparedReportLink.shareUrl);
+  showToast(copied ? "报告链接已复制，请返回微信聊天粘贴发送。" : "自动复制失败，请长按链接手动复制。 ");
+}
+
+async function sharePreparedReportLink() {
+  if (!preparedReportLink?.shareUrl) return;
+  if (!navigator.share) {
+    await copyPreparedReportLink();
+    return;
+  }
+  try {
+    await navigator.share({
+      title: "感觉统合功能评估报告",
+      text: "请在24小时内打开链接并下载 Word 评估报告。",
+      url: preparedReportLink.shareUrl
+    });
+    showToast("已打开系统转发，请确认联系人会话中已出现报告链接。 ");
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      await copyPreparedReportLink();
     }
   }
-  downloadFile(filename, file, DOCX_MIME);
-  shareReportDialog.close();
-  showToast(IS_WECHAT ? "Word 报告已下载，可从微信文件中发送。 " : "Word 报告已下载。 ");
 }
 
 function printReport() {
@@ -1195,7 +1300,10 @@ function attachEvents() {
   document.getElementById("exportJsonBtn").addEventListener("click", exportCurrentJson);
   document.getElementById("exportCsvBtn").addEventListener("click", exportAllCsv);
   document.getElementById("exportDocxBtn").addEventListener("click", exportDocxReport);
-  document.getElementById("sendReportFileBtn").addEventListener("click", sendPreparedReportFile);
+  document.getElementById("shareReportConsent").addEventListener("change", updateReportShareButton);
+  document.getElementById("createReportLinkBtn").addEventListener("click", createPreparedReportLink);
+  document.getElementById("copyReportLinkBtn").addEventListener("click", copyPreparedReportLink);
+  document.getElementById("shareReportLinkBtn").addEventListener("click", sharePreparedReportLink);
   document.getElementById("syncNowBtn").addEventListener("click", syncNow);
   document.getElementById("importJsonBtn").addEventListener("click", () => document.getElementById("importJsonInput").click());
   document.getElementById("importJsonInput").addEventListener("change", (event) => {

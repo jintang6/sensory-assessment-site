@@ -1,6 +1,11 @@
 const MAX_BODY_BYTES = 180_000;
+const MAX_REPORT_BODY_BYTES = 850_000;
+const MAX_REPORT_BYTES = 600_000;
 const DOMAIN_LIMIT = 16;
 const ITEM_LIMIT = 10;
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const REPORT_TOKEN_PATTERN = /^[a-f0-9]{48}$/;
+const REPORT_SHARE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function allowedOrigin(request, env) {
   const origin = request.headers.get("Origin");
@@ -74,11 +79,11 @@ function scrubName(value, studentName) {
   return name && name.length >= 2 ? text.split(name).join("该学生") : text;
 }
 
-async function parseBody(request) {
+async function parseBody(request, maxBytes = MAX_BODY_BYTES) {
   const announcedLength = Number(request.headers.get("Content-Length") || 0);
-  if (announcedLength > MAX_BODY_BYTES) throw new Error("payload_too_large");
+  if (announcedLength > maxBytes) throw new Error("payload_too_large");
   const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) throw new Error("payload_too_large");
+  if (raw.length > maxBytes) throw new Error("payload_too_large");
   try {
     return JSON.parse(raw || "{}");
   } catch {
@@ -89,6 +94,125 @@ async function parseBody(request) {
 function validSessionId(value) {
   const id = cleanString(value, 80);
   return /^[A-Za-z0-9-]{8,80}$/.test(id) ? id : "";
+}
+
+function cleanReportFilename(value) {
+  let filename = String(value ?? "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim()
+    .slice(0, 120);
+  if (!filename) filename = "感觉统合功能评估报告.docx";
+  if (!filename.toLowerCase().endsWith(".docx")) filename += ".docx";
+  return filename;
+}
+
+function validReportBase64(value) {
+  const encoded = typeof value === "string" ? value : "";
+  if (!encoded || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return null;
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  const byteLength = (encoded.length * 3) / 4 - padding;
+  if (byteLength < 100 || byteLength > MAX_REPORT_BYTES || !encoded.startsWith("UEsDB")) return null;
+  return { encoded, byteLength };
+}
+
+function createReportToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function reportPathMatch(path) {
+  return path.match(/^\/api\/reports\/shared\/([a-f0-9]{48})(\/download)?$/);
+}
+
+async function removeExpiredReports(env) {
+  await env.DB.prepare("DELETE FROM shared_reports WHERE datetime(expires_at) <= datetime('now')").run();
+}
+
+async function handleCreateReportShare(request, env) {
+  const body = await parseBody(request, MAX_REPORT_BODY_BYTES);
+  if (body.consent !== true) return json(request, env, { error: "请先确认已获得报告分享授权" }, 400);
+
+  const sessionId = validSessionId(body.sessionId);
+  if (!sessionId) return json(request, env, { error: "无效的匿名会话" }, 400);
+  if (cleanString(body.mimeType, 120) !== DOCX_MIME) {
+    return json(request, env, { error: "仅支持本工具生成的 Word 评估报告" }, 415);
+  }
+
+  const report = validReportBase64(body.fileBase64);
+  if (!report) return json(request, env, { error: "报告文件无效或超过600KB" }, 400);
+
+  await removeExpiredReports(env);
+  const rate = await env.DB.prepare(`
+    SELECT COUNT(*) AS count
+    FROM shared_reports
+    WHERE source_session_id = ? AND created_at >= datetime('now', '-1 hour')
+  `).bind(sessionId).first();
+  if (Number(rate?.count || 0) >= 10) {
+    return json(request, env, { error: "临时链接生成过于频繁，请一小时后再试" }, 429);
+  }
+
+  const token = createReportToken();
+  const filename = cleanReportFilename(body.filename);
+  const expiresAt = new Date(Date.now() + REPORT_SHARE_TTL_MS).toISOString();
+  await env.DB.prepare(`
+    INSERT INTO shared_reports (
+      token, filename, mime_type, file_base64, source_session_id, created_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
+  `).bind(token, filename, DOCX_MIME, report.encoded, sessionId, expiresAt).run();
+
+  const shareUrl = new URL(`/shared-report.html?token=${token}`, request.url).toString();
+  return json(request, env, { ok: true, shareUrl, expiresAt });
+}
+
+async function findSharedReport(env, token, includeFile = false) {
+  if (!REPORT_TOKEN_PATTERN.test(token)) return null;
+  await removeExpiredReports(env);
+  const columns = includeFile
+    ? "filename, mime_type, file_base64, expires_at"
+    : "filename, mime_type, expires_at";
+  return env.DB.prepare(`
+    SELECT ${columns}
+    FROM shared_reports
+    WHERE token = ? AND datetime(expires_at) > datetime('now')
+  `).bind(token).first();
+}
+
+async function handleSharedReportInfo(request, env, token) {
+  const report = await findSharedReport(env, token);
+  if (!report) return json(request, env, { error: "报告链接不存在或已过期" }, 404);
+  return json(request, env, {
+    filename: report.filename,
+    expiresAt: report.expires_at
+  });
+}
+
+function decodeBase64(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function contentDisposition(filename) {
+  const encoded = encodeURIComponent(filename).replace(/'/g, "%27");
+  return `attachment; filename="assessment-report.docx"; filename*=UTF-8''${encoded}`;
+}
+
+async function handleSharedReportDownload(request, env, token) {
+  const report = await findSharedReport(env, token, true);
+  if (!report) return json(request, env, { error: "报告链接不存在或已过期" }, 404);
+  const validFile = validReportBase64(report.file_base64);
+  if (!validFile) return json(request, env, { error: "报告文件已损坏，请联系发送人重新生成" }, 410);
+  return new Response(decodeBase64(validFile.encoded), {
+    headers: responseHeaders(request, env, {
+      "Content-Type": report.mime_type || DOCX_MIME,
+      "Content-Disposition": contentDisposition(report.filename),
+      "Cache-Control": "private, no-store, max-age=0",
+      "Content-Length": String(validFile.byteLength),
+      "X-Robots-Tag": "noindex, nofollow, noarchive"
+    })
+  });
 }
 
 function normalizeRecord(rawRecord, deidentified) {
@@ -474,6 +598,7 @@ export async function onRequestPost(context) {
     if (path === "/api/analytics/visit") return handleVisit(request, env, false);
     if (path === "/api/analytics/heartbeat") return handleVisit(request, env, true);
     if (path === "/api/assessments") return handleAssessment(request, env);
+    if (path === "/api/reports/share") return handleCreateReportShare(request, env);
     return json(request, env, { error: "接口不存在" }, 404);
   } catch (error) {
     if (error.message === "payload_too_large") return json(request, env, { error: "提交内容过大" }, 413);
@@ -487,6 +612,12 @@ export async function onRequestGet(context) {
   if (!originIsAllowed(request, env)) return json(request, env, { error: "不允许的请求来源" }, 403);
   const path = routePath(request);
   try {
+    const sharedReport = reportPathMatch(path);
+    if (sharedReport) {
+      return sharedReport[2]
+        ? handleSharedReportDownload(request, env, sharedReport[1])
+        : handleSharedReportInfo(request, env, sharedReport[1]);
+    }
     if (path === "/api/admin/summary") return handleAdminSummary(request, env);
     if (path === "/api/admin/export") return handleAdminExport(request, env);
     if (path.startsWith("/api/admin/records/")) return handleAdminRecord(request, env, path.split("/").pop());
