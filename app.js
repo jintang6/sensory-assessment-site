@@ -1,3 +1,5 @@
+import { analyzeAssessment, compactAssessmentAnalysis, deidentifyAssessmentRecord } from "./assessment-engine.js";
+
 const STORAGE_KEY = "sensoryAssessmentRecords.v2";
 const DRAFT_KEY = "sensoryAssessmentDraft.v2";
 const LEGACY_STORAGE_KEY = "sensoryIntegrationRecords.v1";
@@ -572,106 +574,7 @@ function formatDateTime(value) {
 }
 
 function analyze(data) {
-  const rows = domains.map((domain) => {
-    const value = data.domains?.[domain.id] || defaultDomainValue();
-    const itemScores = domain.items.map((item) => ({ ...item, score: Number(value.items?.[item.id]) || null }));
-    const rated = itemScores.filter((item) => item.score !== null);
-    const average = rated.length ? rated.reduce((sum, item) => sum + item.score, 0) / rated.length : null;
-    const valid = rated.length >= 3;
-    const impact = Number(value.impact || 0);
-    const priority = valid ? ((5.25 - average) * 1.2) + (impact * .65) : -1;
-    return { ...domain, ...value, itemScores, answered: rated.length, average, valid, impact, priority };
-  });
-
-  const totalItems = domains.reduce((sum, domain) => sum + domain.items.length, 0);
-  const answeredItems = rows.reduce((sum, row) => sum + row.answered, 0);
-  const coverage = Math.round((answeredItems / totalItems) * 100);
-  const validRows = rows.filter((row) => row.valid);
-  const average = validRows.length ? validRows.reduce((sum, row) => sum + row.average, 0) / validRows.length : null;
-  const student = data.studentName || data.studentCode || "该学生";
-
-  let level = "资料不足";
-  let summary = "至少完成3个领域、每个领域3项后生成综合分析。";
-  if (average !== null) {
-    if (average < 2) level = "高强度支持需求";
-    else if (average < 3) level = "显著支持需求";
-    else if (average < 4) level = "发展中";
-    else level = "整体较稳定";
-
-    const contextText = data.observationSources.length >= 2
-      ? `结果综合了${data.observationSources.length}类观察来源`
-      : "当前观察情境较少，建议补充课堂、生活或家庭资料";
-    summary = `${contextText}。综合分反映当前支持条件下的功能表现，应结合各领域参与影响与具体观察解释。`;
-  }
-
-  const sortedPriority = validRows.slice().sort((a, b) => b.priority - a.priority);
-  const stableRows = validRows.filter((row) => row.average >= 4 && row.impact <= 1).sort((a, b) => b.average - a.average);
-  const relativeStrengths = stableRows.length ? stableRows : validRows.slice().sort((a, b) => b.average - a.average).slice(0, 2);
-  const focusRows = sortedPriority.filter((row) => row.average < 4 || row.impact >= 2).slice(0, 4);
-
-  const strengths = relativeStrengths.map((row) => {
-    const bestItems = row.itemScores.filter((item) => item.score >= 4).slice(0, 2).map((item) => item.label);
-    const detail = bestItems.length ? `较稳定表现包括：${bestItems.join("；")}` : "该领域为当前相对较好的功能基础";
-    return `${row.title}（${row.average.toFixed(1)}分）：${detail}。`;
-  });
-
-  const needs = focusRows.map((row) => {
-    const lowest = row.itemScores.filter((item) => item.score !== null).sort((a, b) => a.score - b.score).slice(0, 2);
-    const detail = lowest.map((item) => `${item.label}（${item.score}级）`).join("；");
-    return `${row.title}（${row.average.toFixed(1)}分，${impactLabels[row.impact]}）：优先关注${detail || "已记录的低分项目"}。`;
-  });
-
-  const goals = [];
-  focusRows.slice(0, 4).forEach((row) => {
-    const targetItem = row.itemScores.filter((item) => item.score !== null && item.score < 5).sort((a, b) => a.score - b.score)[0];
-    if (!targetItem) return;
-    const targetScore = Math.min(5, targetItem.score + 1);
-    const support = targetItem.score <= 2
-      ? "示范、视觉提示与必要身体协助"
-      : targetItem.score === 3
-        ? "视觉流程与少量语言提示"
-        : "自然情境提示";
-    const settings = data.observationSources.length >= 2 ? "至少2个自然情境" : "训练与一个自然情境";
-    goals.push(`8周内，${student}在${support}下，能${targetItem.label}；在${settings}连续3次记录达到${targetScore}级（${scoreLevels[targetScore].label}），并记录提示次数与成功比例。`);
-  });
-
-  const strategies = [];
-  focusRows.slice(0, 4).forEach((row) => {
-    row.strategies.forEach((strategy) => {
-      const item = `${row.title}：${strategy}`;
-      if (!strategies.includes(item)) strategies.push(item);
-    });
-  });
-  if (validRows.length) {
-    strategies.push("跨专业记录：每次使用同一评分标准记录任务、情境、提示等级、成功比例和恢复时间；4-8周后按相同条件复评。");
-  }
-
-  if (!strengths.length) strengths.push("完成更多领域后，将显示学生当前相对稳定的能力和可用于带动训练的资源。");
-  if (!needs.length) needs.push("完成更多领域后，将按功能分数和参与影响自动排序支持优先级。");
-  if (!goals.length) goals.push("完成至少3个领域后，将根据具体低分项目生成可测量的8周阶段目标。");
-  if (!strategies.length) strategies.push("完成评估后，将根据优先领域生成训练、课堂和生活情境支持策略。");
-
-  return {
-    average,
-    coverage,
-    answeredItems,
-    totalItems,
-    validDomainCount: validRows.length,
-    level,
-    summary,
-    rows,
-    strengths,
-    needs,
-    goals,
-    strategies,
-    priorities: focusRows,
-    domainScores: Object.fromEntries(validRows.map((row) => [row.id, {
-      title: row.title,
-      score: Number(row.average.toFixed(2)),
-      impact: row.impact,
-      answered: row.answered
-    }]))
-  };
+  return analyzeAssessment(data, { domains, scoreLevels, impactLabels });
 }
 
 function refreshAnalysis() {
@@ -686,7 +589,7 @@ function refreshAnalysis() {
   document.getElementById("overallSummary").textContent = result.summary;
   document.getElementById("scoreRing").style.setProperty("--score-angle", `${result.average === null ? 0 : (result.average / 5) * 360}deg`);
   const state = document.getElementById("analysisState");
-  state.textContent = result.average === null ? "等待评估" : `${result.validDomainCount}个有效领域`;
+  state.textContent = result.average === null ? "等待评估" : `个别化 · ${result.validDomainCount}领域`;
   state.classList.toggle("ready", result.average !== null);
 
   domains.forEach((domain) => {
@@ -712,6 +615,8 @@ function refreshAnalysis() {
   document.getElementById("priorityTags").innerHTML = tags;
   renderList("strengthList", result.strengths);
   renderList("needList", result.needs);
+  renderList("basisList", result.basis);
+  renderList("alertList", result.alerts);
   renderList("goalList", result.goals);
   renderList("strategyList", result.strategies);
   queueDraftSave(data, result);
@@ -741,9 +646,17 @@ function saveRecordLocally(data, { render = true } = {}) {
   return data;
 }
 
+function prepareCloudPayload(data, analysis) {
+  if (!cloudSettings.deidentified) return { record: data, analysis: compactAssessmentAnalysis(analysis) };
+  const record = deidentifyAssessmentRecord(data);
+  const deidentifiedAnalysis = analyze(record);
+  return { record, analysis: compactAssessmentAnalysis(deidentifiedAnalysis) };
+}
+
 function syncSignature(data, analysis) {
-  const { createdAt, updatedAt, ...stableRecord } = data;
-  return JSON.stringify({ deidentified: cloudSettings.deidentified, record: stableRecord, analysis });
+  const payload = prepareCloudPayload(data, analysis);
+  const { createdAt, updatedAt, ...stableRecord } = payload.record;
+  return JSON.stringify({ deidentified: cloudSettings.deidentified, record: stableRecord, analysis: payload.analysis });
 }
 
 function queueCloudSync(data, analysis, { immediate = false } = {}) {
@@ -849,6 +762,7 @@ async function syncRecord(data, analysis, { silent = false, signature = syncSign
 
   updateSyncStatus("enabled", "正在安全同步…");
   try {
+    const payload = prepareCloudPayload(data, analysis);
     const response = await fetch(`${API_ORIGIN}/api/assessments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -856,8 +770,8 @@ async function syncRecord(data, analysis, { silent = false, signature = syncSign
         consent: true,
         deidentified: cloudSettings.deidentified,
         sessionId: getSessionId(),
-        record: data,
-        analysis
+        record: payload.record,
+        analysis: payload.analysis
       }),
       keepalive
     });
@@ -986,9 +900,11 @@ function buildReportHtml(record) {
     <div><b>学生编号：</b>${escapeHtml(record.studentCode || "未填写")}</div><div><b>年龄：</b>${escapeHtml(record.age || "未填写")}</div><div><b>性别：</b>${escapeHtml(record.gender || "未填写")}</div>
     <div><b>班级：</b>${escapeHtml(record.className || "未填写")}</div><div><b>主要发展需要：</b>${escapeHtml(record.primaryNeed || "未填写")}</div><div><b>评估人：</b>${escapeHtml(record.evaluator || "未填写")}</div>
     <div><b>主要情境：</b>${escapeHtml(record.setting || "未填写")}</div><div><b>观察来源：</b>${escapeHtml((record.observationSources || []).join("、") || "未填写")}</div><div><b>完成度：</b>${result.coverage}%</div>
-    <div><b>综合分：</b><span class="score">${result.average === null ? "—" : result.average.toFixed(1)}</span></div><div><b>总体等级：</b>${escapeHtml(result.level)}</div><div><b>有效领域：</b>${result.validDomainCount}/${domains.length}</div>
+    <div><b>综合分：</b><span class="score">${result.average === null ? "—" : result.average.toFixed(1)}</span></div><div><b>总体等级：</b>${escapeHtml(result.level)}</div><div><b>分析可信度：</b>${escapeHtml(result.confidence)}</div>
   </div>
-  <h2>背景、安全与解释</h2><p><b>主要关切：</b>${escapeHtml(record.background || "未填写")}</p><p><b>医疗与安全：</b>${escapeHtml(record.medicalPrecautions || "未填写")}</p><p>${escapeHtml(result.summary)}</p>
+  <h2>评估摘要</h2><p>${escapeHtml(result.summary)}</p>
+  <h2>个别化分析依据</h2>${list(result.basis)}
+  <h2>背景、安全与解释</h2><p><b>主要关切：</b>${escapeHtml(record.background || "未填写")}</p><p><b>医疗与安全：</b>${escapeHtml(record.medicalPrecautions || "未填写")}</p>${list(result.alerts)}
   <h2>相对优势</h2>${list(result.strengths)}<h2>优先支持需要</h2>${list(result.needs)}<h2>8周阶段目标</h2>${list(result.goals)}<h2>训练、课堂与生活支持</h2>${list(result.strategies)}
   <h2>领域与项目明细</h2>${domainSections}
   <p class="foot">评分：1全程协助，2大量协助，3部分提示，4少量提示，5独立稳定；每个领域至少完成3项才形成领域分。建议由具备相关专业能力的人员结合多情境观察、家庭优先事项和跨专业资料解释。</p>

@@ -13,6 +13,7 @@ fi
 cp "$PROJECT_DIR/index.html" "$BUILD_DIR/index.html"
 cp "$PROJECT_DIR/styles.css" "$BUILD_DIR/styles.css"
 cp "$PROJECT_DIR/app.js" "$BUILD_DIR/app.js"
+cp "$PROJECT_DIR/assessment-engine.js" "$BUILD_DIR/assessment-engine.js"
 cp "$PROJECT_DIR/admin.html" "$BUILD_DIR/admin.html"
 cp "$PROJECT_DIR/admin.css" "$BUILD_DIR/admin.css"
 cp "$PROJECT_DIR/admin.js" "$BUILD_DIR/admin.js"

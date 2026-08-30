@@ -135,8 +135,17 @@ function normalizeRecord(rawRecord, deidentified) {
   };
 }
 
-function normalizeAnalysis(rawAnalysis) {
+function normalizeAnalysis(rawAnalysis, studentName = "") {
   const raw = rawAnalysis && typeof rawAnalysis === "object" ? rawAnalysis : {};
+  const cleanAnalysisString = (value, max) => {
+    const text = cleanString(value, max);
+    const name = cleanString(studentName, 80);
+    return name && name.length >= 2 ? text.split(name).join("该学生") : text;
+  };
+  const cleanAnalysisArray = (value, maxItems, maxLength) => {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, maxItems).map((item) => cleanAnalysisString(item, maxLength)).filter(Boolean);
+  };
   const domainScores = {};
   Object.entries(raw.domainScores || {}).slice(0, DOMAIN_LIMIT).forEach(([id, item]) => {
     if (!item || typeof item !== "object") return;
@@ -147,7 +156,9 @@ function normalizeAnalysis(rawAnalysis) {
       title: cleanString(item.title, 100),
       score: Math.max(1, Math.min(5, Number(score.toFixed(2)))),
       impact: cleanImpact(item.impact),
-      answered: Math.max(0, Math.min(ITEM_LIMIT, Number(item.answered) || 0))
+      answered: Math.max(0, Math.min(ITEM_LIMIT, Number(item.answered) || 0)),
+      support: cleanString(item.support, 60),
+      priority: Number.isFinite(Number(item.priority)) ? Math.max(0, Math.min(20, Number(Number(item.priority).toFixed(2)))) : null
     };
   });
 
@@ -155,12 +166,16 @@ function normalizeAnalysis(rawAnalysis) {
   return {
     average: Number.isFinite(average) ? Math.max(1, Math.min(5, Number(average.toFixed(2)))) : null,
     coverage: Math.max(0, Math.min(100, Number(raw.coverage) || 0)),
+    methodVersion: cleanString(raw.methodVersion, 80),
     level: cleanString(raw.level, 60),
-    summary: cleanString(raw.summary, 800),
-    strengths: cleanArray(raw.strengths, 10, 500),
-    needs: cleanArray(raw.needs, 10, 500),
-    goals: cleanArray(raw.goals, 10, 700),
-    strategies: cleanArray(raw.strategies, 12, 700),
+    confidence: cleanString(raw.confidence, 40),
+    summary: cleanAnalysisString(raw.summary, 1000),
+    basis: cleanAnalysisArray(raw.basis, 10, 600),
+    alerts: cleanAnalysisArray(raw.alerts, 10, 700),
+    strengths: cleanAnalysisArray(raw.strengths, 10, 600),
+    needs: cleanAnalysisArray(raw.needs, 10, 700),
+    goals: cleanAnalysisArray(raw.goals, 10, 800),
+    strategies: cleanAnalysisArray(raw.strategies, 12, 800),
     domainScores
   };
 }
@@ -227,8 +242,9 @@ async function handleAssessment(request, env) {
   if (body.consent !== true) return json(request, env, { error: "未确认云端同步授权" }, 400);
 
   const deidentified = body.deidentified !== false;
+  const studentName = deidentified ? cleanString(body.record?.studentName, 80) : "";
   const record = normalizeRecord(body.record, deidentified);
-  const analysis = normalizeAnalysis(body.analysis);
+  const analysis = normalizeAnalysis(body.analysis, studentName);
   const sessionId = validSessionId(body.sessionId);
   const clientRecordId = cleanString(record.id, 80);
 

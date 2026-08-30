@@ -1419,6 +1419,14 @@ svg {
   background: var(--coral);
 }
 
+.result-marker.basis {
+  background: var(--blue);
+}
+
+.result-marker.alert {
+  background: #c58b39;
+}
+
 .result-group ul,
 .strategy-list,
 .goal-list {
@@ -1446,6 +1454,15 @@ svg {
 
 #needList li {
   border-left-color: #db948a;
+}
+
+#basisList li {
+  border-left-color: #78a8c4;
+}
+
+#alertList li {
+  border-left-color: #d3a04f;
+  background: #fffaf1;
 }
 
 .goal-list {

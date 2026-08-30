@@ -135,7 +135,8 @@ export function buildAssessmentReportDocument(row, api) {
     [["学生标识", title], ["学生编号", record.studentCode], ["隐私模式", privacyMode]],
     [["年龄", record.age], ["性别", record.gender], ["班级", record.className]],
     [["主要发展需要", record.primaryNeed], ["评估人", record.evaluator], ["评估日期", record.assessmentDate]],
-    [["主要情境", record.setting], ["综合分", analysis.average == null ? "—" : Number(analysis.average).toFixed(1)], ["完成度", `${Number(analysis.coverage) || 0}%`]]
+    [["主要情境", record.setting], ["综合分", analysis.average == null ? "—" : Number(analysis.average).toFixed(1)], ["完成度", `${Number(analysis.coverage) || 0}%`]],
+    [["沟通方式", record.communicationMode], ["移动能力", record.mobility], ["分析可信度", analysis.confidence]]
   ].map((cells) => new TableRow({
     cantSplit: true,
     children: cells.map(([label, value]) => metadataCell(label, value))
@@ -259,18 +260,21 @@ export function buildAssessmentReportDocument(row, api) {
     metadataTable,
     heading("一、评估摘要"),
     bodyParagraph(valueOr(analysis.summary, "尚未形成有效摘要。")),
-    heading("二、背景与安全信息"),
+    heading("二、个别化分析依据"),
+    ...bulletList(analysis.basis),
+    heading("三、背景与安全信息"),
     bodyParagraph(`主要关切：${valueOr(record.background, "未填写或已去标识化")}`),
     bodyParagraph(`医疗与安全注意事项：${valueOr(record.medicalPrecautions, "未填写或已去标识化")}`),
-    heading("三、相对优势"),
+    ...bulletList(analysis.alerts),
+    heading("四、相对优势"),
     ...bulletList(analysis.strengths),
-    heading("四、优先支持需要"),
+    heading("五、优先支持需要"),
     ...bulletList(analysis.needs),
-    heading("五、8周阶段目标"),
+    heading("六、8周阶段目标"),
     ...bulletList(analysis.goals),
-    heading("六、康复、课堂与生活支持"),
+    heading("七、康复、课堂与生活支持"),
     ...bulletList(analysis.strategies),
-    heading("七、领域表现与观察记录"),
+    heading("八、领域表现与观察记录"),
     domainTable,
     new Paragraph({
       style: "ReportNote",

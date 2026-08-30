@@ -253,12 +253,15 @@ function renderRecordDetail(row) {
       <div><span>隐私模式</span><strong>${Number(row.is_deidentified) === 1 ? "去标识化" : "完整记录"}</strong></div>
       <div><span>综合分</span><strong>${analysis.average == null ? "—" : Number(analysis.average).toFixed(1)}</strong></div>
       <div><span>完成度</span><strong>${number(analysis.coverage)}%</strong></div>
+      <div><span>分析可信度</span><strong>${escapeHtml(analysis.confidence || "历史记录未标注")}</strong></div>
       <div><span>评估日期</span><strong>${escapeHtml(record.assessmentDate || "—")}</strong></div>
       <div><span>主要情境</span><strong>${escapeHtml(record.setting || "—")}</strong></div>
       <div><span>主要发展需要</span><strong>${escapeHtml(record.primaryNeed || "—")}</strong></div>
       <div><span>最后同步</span><strong>${formatDateTime(row.updated_at)}</strong></div>
     </div>
     <section class="detail-section"><h3>总体摘要</h3><p>${escapeHtml(analysis.summary || "暂无")}</p></section>
+    <section class="detail-section"><h3>个别化分析依据</h3>${list(analysis.basis)}</section>
+    <section class="detail-section"><h3>安全与解释提醒</h3>${list(analysis.alerts)}</section>
     <section class="detail-section"><h3>相对优势</h3>${list(analysis.strengths)}</section>
     <section class="detail-section"><h3>优先支持需要</h3>${list(analysis.needs)}</section>
     <section class="detail-section"><h3>8周阶段目标</h3>${list(analysis.goals)}</section>
