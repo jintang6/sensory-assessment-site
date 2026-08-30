@@ -175,6 +175,10 @@
   font-size: 12px;
 }
 
+.auth-help .text-button {
+  margin-left: 4px;
+}
+
 .invite-summary {
   margin: 18px 0 22px;
   padding: 13px 14px;
@@ -186,6 +190,23 @@
 .invite-summary strong {
   display: block;
   color: var(--ink);
+}
+
+.invite-code-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.invite-code-entry .button {
+  min-height: 43px;
+}
+
+.invite-code-entry input,
+.invite-code-output {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 750;
+  text-transform: uppercase;
 }
 
 .registration-confirm {
@@ -575,7 +596,7 @@
 
 .invite-form {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 180px auto;
+  grid-template-columns: minmax(220px, 1fr) auto;
   gap: 12px;
   align-items: end;
   padding: 18px;

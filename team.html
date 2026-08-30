@@ -38,7 +38,7 @@
         <h1>把评估留在团队里，<br>把身份信息留在本机。</h1>
         <p>云端只保存学生协作编号、结构化评分和自动分析。姓名、班级、学校、评估人员、背景与医疗注意事项不会进入团队库。</p>
         <div class="privacy-ledger" aria-label="云协作隐私范围">
-          <div><i class="ledger-dot teal"></i><span><b>邀请制账号</b><small>没有有效邀请链接无法注册</small></span></div>
+          <div><i class="ledger-dot teal"></i><span><b>邀请制账号</b><small>没有有效邀请码无法注册</small></span></div>
           <div><i class="ledger-dot gold"></i><span><b>固定去标识化</b><small>服务端再次删除直接身份字段</small></span></div>
           <div><i class="ledger-dot blue"></i><span><b>版本与审计</b><small>每次同步保留版本和操作记录</small></span></div>
         </div>
@@ -54,20 +54,21 @@
           <button class="button primary auth-submit" type="submit">安全登录</button>
         </form>
         <div class="form-error" id="loginError" role="alert"></div>
-        <p class="auth-help">新成员请使用管理员发送的专属邀请链接注册。</p>
+        <p class="auth-help">新成员请向管理员获取一次性邀请码。<button class="text-button" id="showRegisterBtn" type="button">使用邀请码注册</button></p>
       </section>
 
       <section class="auth-panel" id="registerPanel" hidden>
-        <span class="eyebrow">接受部门邀请</span>
-        <h2>建立协作账号</h2>
-        <div class="invite-summary" id="inviteSummary">正在验证邀请…</div>
-        <form id="registerForm" hidden>
-          <label class="team-field"><span>邀请邮箱</span><input id="registerEmail" type="email" autocomplete="username" required></label>
+        <span class="eyebrow">邀请码注册</span>
+        <h2>加入部门团队</h2>
+        <div class="invite-summary" id="inviteSummary">请输入管理员提供的一次性邀请码。</div>
+        <form id="registerForm">
+          <label class="team-field"><span>邀请码</span><div class="invite-code-entry"><input id="registerInviteCode" autocomplete="off" autocapitalize="characters" maxlength="18" required placeholder="KFB-XXXX-XXXX-XXXX"><button class="button quiet" id="verifyInviteCodeBtn" type="button">验证</button></div></label>
+          <label class="team-field"><span>工作邮箱</span><input id="registerEmail" type="email" autocomplete="username" required placeholder="name@example.com"></label>
           <label class="team-field"><span>姓名或工作称呼</span><input id="registerName" autocomplete="name" maxlength="40" required placeholder="如：王老师"></label>
           <label class="team-field"><span>设置密码</span><input id="registerPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="至少12个字符"></label>
           <label class="team-field"><span>确认密码</span><input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="再次输入密码"></label>
           <label class="registration-confirm"><input id="registerPrivacyConfirm" type="checkbox" required><span>我会使用内部协作编号，不把姓名、学籍号、联系方式等直接身份信息写入云端字段或观察记录。</span></label>
-          <button class="button primary auth-submit" type="submit">接受邀请并注册</button>
+          <button class="button primary auth-submit" type="submit">使用邀请码注册</button>
         </form>
         <div class="form-error" id="registerError" role="alert"></div>
         <button class="text-button" id="backToLoginBtn" type="button">返回成员登录</button>
@@ -136,15 +137,14 @@
       <section class="team-tab-panel" data-team-panel="members">
         <div class="management-grid">
           <section class="team-panel invite-panel">
-            <div class="panel-toolbar"><div><span class="eyebrow">邀请制成员管理</span><h2>生成专属邀请</h2></div></div>
+            <div class="panel-toolbar"><div><span class="eyebrow">邀请制成员管理</span><h2>生成一次性邀请码</h2></div></div>
             <form class="invite-form" id="inviteForm">
-              <label class="team-field"><span>成员邮箱</span><input id="inviteEmail" type="email" required placeholder="teacher@example.com"></label>
               <label class="team-field"><span>成员角色</span><select id="inviteRole"><option value="evaluator">评估成员</option><option value="viewer">只读成员</option><option value="admin">部门管理员</option></select></label>
-              <button class="button primary" type="submit">生成邀请链接</button>
+              <button class="button primary" type="submit">生成邀请码</button>
             </form>
             <div class="invite-result" id="inviteResult" hidden>
-              <label for="inviteLinkOutput">72小时专属邀请链接</label>
-              <div><input id="inviteLinkOutput" readonly><button class="button quiet" id="copyInviteBtn" type="button">复制</button></div>
+              <label for="inviteCodeOutput">72小时一次性邀请码</label>
+              <div><input id="inviteCodeOutput" class="invite-code-output" readonly><button class="button quiet" id="copyInviteBtn" type="button">复制</button></div>
               <p id="inviteExpiryText"></p>
             </div>
             <div class="form-error" id="inviteError" role="alert"></div>

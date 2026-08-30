@@ -19,7 +19,6 @@ const teamRecordDialog = document.getElementById("teamRecordDialog");
 const accountDialog = document.getElementById("accountDialog");
 const recordTableBody = document.getElementById("teamRecordTableBody");
 const recordSearch = document.getElementById("teamRecordSearch");
-const inviteToken = new URLSearchParams(location.search).get("invite") || "";
 
 let summary = null;
 let currentRecord = null;
@@ -99,17 +98,29 @@ function showDashboard() {
   document.getElementById("teamLogoutBtn").hidden = false;
 }
 
-async function loadInvite() {
-  showRegister();
+function formatInviteCodeInput(value) {
+  const compact = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 15);
+  return [compact.slice(0, 3), compact.slice(3, 7), compact.slice(7, 11), compact.slice(11, 15)].filter(Boolean).join("-");
+}
+
+async function verifyInviteCode() {
   const inviteSummary = document.getElementById("inviteSummary");
-  const registerForm = document.getElementById("registerForm");
+  const inviteCode = document.getElementById("registerInviteCode").value;
+  if (!inviteCode.trim()) {
+    inviteSummary.textContent = "请输入管理员提供的一次性邀请码。";
+    throw new Error("请输入邀请码");
+  }
+  inviteSummary.textContent = "正在验证邀请码…";
   try {
-    const invite = await api(`/api/team/invites/${encodeURIComponent(inviteToken)}`);
-    inviteSummary.innerHTML = `<strong>${escapeHtml(invite.teamName)}</strong>邀请邮箱：${escapeHtml(invite.emailHint)} · 角色：${escapeHtml(invite.roleLabel)}<br>有效期至 ${escapeHtml(formatDateTime(invite.expiresAt))}`;
-    registerForm.hidden = false;
+    const invite = await api("/api/team/invite-code", {
+      method: "POST",
+      body: JSON.stringify({ inviteCode })
+    });
+    inviteSummary.innerHTML = `<strong>${escapeHtml(invite.teamName)}</strong>受邀角色：${escapeHtml(invite.roleLabel)}<br>有效期至 ${escapeHtml(formatDateTime(invite.expiresAt))}`;
+    return invite;
   } catch (error) {
     inviteSummary.textContent = error.message;
-    document.getElementById("registerError").textContent = "请联系部门管理员重新生成邀请链接。";
+    throw error;
   }
 }
 
@@ -121,8 +132,7 @@ async function loadSession() {
     refreshTimer = setInterval(() => loadSummary({ quiet: true }), 30_000);
     return data;
   } catch (error) {
-    if (inviteToken) await loadInvite();
-    else showLogin();
+    showLogin();
     return null;
   }
 }
@@ -200,7 +210,7 @@ function renderInvites() {
   const invites = summary?.invites || [];
   document.getElementById("pendingInviteCount").textContent = String(invites.length);
   document.getElementById("pendingInviteList").innerHTML = invites.length
-    ? invites.map((invite) => `<div class="pending-item"><strong>${escapeHtml(invite.email)}</strong><span>${escapeHtml(invite.roleLabel)} · ${escapeHtml(formatDateTime(invite.expires_at))} 到期</span></div>`).join("")
+    ? invites.map((invite) => `<div class="pending-item"><strong>邀请码尾号 ${escapeHtml(invite.code_hint)}</strong><span>${escapeHtml(invite.roleLabel)} · ${escapeHtml(formatDateTime(invite.expires_at))} 到期</span></div>`).join("")
     : '<div class="team-empty">暂无待接受邀请</div>';
 }
 
@@ -416,10 +426,11 @@ document.getElementById("registerForm").addEventListener("submit", async (event)
   submit.disabled = true;
   submit.textContent = "正在建立账号…";
   try {
+    await verifyInviteCode();
     await api("/api/team/register", {
       method: "POST",
       body: JSON.stringify({
-        inviteToken,
+        inviteCode: document.getElementById("registerInviteCode").value,
         email: document.getElementById("registerEmail").value,
         displayName: document.getElementById("registerName").value,
         password
@@ -432,8 +443,30 @@ document.getElementById("registerForm").addEventListener("submit", async (event)
     errorBox.textContent = error.message;
   } finally {
     submit.disabled = false;
-    submit.textContent = "接受邀请并注册";
+    submit.textContent = "使用邀请码注册";
   }
+});
+
+document.getElementById("showRegisterBtn").addEventListener("click", () => {
+  showRegister();
+  document.getElementById("registerInviteCode").focus();
+});
+
+document.getElementById("verifyInviteCodeBtn").addEventListener("click", async () => {
+  const errorBox = document.getElementById("registerError");
+  errorBox.textContent = "";
+  try {
+    await verifyInviteCode();
+    showToast("邀请码有效");
+  } catch (error) {
+    errorBox.textContent = error.message;
+  }
+});
+
+document.getElementById("registerInviteCode").addEventListener("input", (event) => {
+  event.target.value = formatInviteCodeInput(event.target.value);
+  document.getElementById("inviteSummary").textContent = "输入完成后验证邀请码。";
+  document.getElementById("registerError").textContent = "";
 });
 
 document.getElementById("backToLoginBtn").addEventListener("click", () => {
@@ -473,11 +506,10 @@ document.getElementById("inviteForm").addEventListener("submit", async (event) =
     const result = await api("/api/team/invites", {
       method: "POST",
       body: JSON.stringify({
-        email: document.getElementById("inviteEmail").value,
         role: document.getElementById("inviteRole").value
       })
     });
-    document.getElementById("inviteLinkOutput").value = result.invite.inviteUrl;
+    document.getElementById("inviteCodeOutput").value = result.invite.code;
     document.getElementById("inviteExpiryText").textContent = `${result.invite.roleLabel} · ${formatDateTime(result.invite.expiresAt)} 到期，仅可使用一次。`;
     document.getElementById("inviteResult").hidden = false;
     event.target.reset();
@@ -490,7 +522,7 @@ document.getElementById("inviteForm").addEventListener("submit", async (event) =
 });
 
 document.getElementById("copyInviteBtn").addEventListener("click", () => {
-  copyText(document.getElementById("inviteLinkOutput").value, "邀请链接已复制");
+  copyText(document.getElementById("inviteCodeOutput").value, "邀请码已复制");
 });
 
 document.getElementById("memberTableBody").addEventListener("click", async (event) => {

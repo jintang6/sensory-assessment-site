@@ -89,14 +89,15 @@
           <h2>部门团队空间</h2>
           <p id="teamBootstrapStatus">正在检查团队状态…</p>
         </div>
-        <form class="team-bootstrap-form" id="teamBootstrapForm">
-          <label class="admin-field"><span>首位部门管理员邮箱</span><input id="bootstrapAdminEmail" type="email" required placeholder="admin@example.com"></label>
-          <button class="button primary" type="submit">生成管理员邀请</button>
-        </form>
-        <div class="bootstrap-result" id="bootstrapResult" hidden>
-          <label for="bootstrapInviteLink">72小时专属邀请链接</label>
-          <div><input id="bootstrapInviteLink" readonly><button class="button quiet" id="copyBootstrapInviteBtn" type="button">复制</button></div>
-          <small>仅可使用一次。请通过部门内部可信渠道发送给首位管理员。</small>
+        <div class="team-bootstrap-controls">
+          <form class="team-bootstrap-form" id="teamBootstrapForm">
+            <button class="button primary" type="submit">生成首位管理员邀请码</button>
+          </form>
+          <div class="bootstrap-result" id="bootstrapResult" hidden>
+            <label for="bootstrapInviteCode">72小时一次性邀请码</label>
+            <div><input id="bootstrapInviteCode" readonly><button class="button quiet" id="copyBootstrapInviteBtn" type="button">复制</button></div>
+            <small>完整邀请码仅本次显示，请通过部门内部可信渠道发送。</small>
+          </div>
         </div>
       </section>
 

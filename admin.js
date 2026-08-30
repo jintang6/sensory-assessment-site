@@ -155,24 +155,23 @@ function renderTeamBootstrap(metrics) {
     result.hidden = true;
     return;
   }
-  document.getElementById("teamBootstrapStatus").textContent = "尚未建立团队。请为首位部门管理员生成一次性邀请链接。";
+  document.getElementById("teamBootstrapStatus").textContent = "尚未建立团队。请生成首位部门管理员的一次性邀请码。";
   form.hidden = false;
 }
 
 async function createBootstrapInvite(event) {
   event.preventDefault();
   const submit = event.submitter;
-  const emailInput = document.getElementById("bootstrapAdminEmail");
   submit.disabled = true;
   try {
     const data = await api("/api/admin/team/invites", {
       method: "POST",
-      body: JSON.stringify({ email: emailInput.value })
+      body: "{}"
     });
-    document.getElementById("bootstrapInviteLink").value = data.invite.inviteUrl;
+    document.getElementById("bootstrapInviteCode").value = data.invite.code;
     document.getElementById("bootstrapResult").hidden = false;
-    document.getElementById("teamBootstrapStatus").textContent = `首位管理员邀请已生成，${formatDateTime(data.invite.expiresAt)} 到期。`;
-    showToast("管理员邀请链接已生成。 ");
+    document.getElementById("teamBootstrapStatus").textContent = `首位管理员邀请码已生成，${formatDateTime(data.invite.expiresAt)} 到期。`;
+    showToast("管理员邀请码已生成。 ");
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -181,16 +180,16 @@ async function createBootstrapInvite(event) {
 }
 
 async function copyBootstrapInvite() {
-  const value = document.getElementById("bootstrapInviteLink").value;
+  const value = document.getElementById("bootstrapInviteCode").value;
   if (!value) return;
   try {
     await navigator.clipboard.writeText(value);
   } catch {
-    const input = document.getElementById("bootstrapInviteLink");
+    const input = document.getElementById("bootstrapInviteCode");
     input.select();
     document.execCommand("copy");
   }
-  showToast("管理员邀请链接已复制。 ");
+  showToast("管理员邀请码已复制。 ");
 }
 
 function dateKey(date) {

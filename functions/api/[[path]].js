@@ -9,7 +9,8 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 const REPORT_TOKEN_PATTERN = /^[a-f0-9]{48}$/;
 const REPORT_SHARE_TTL_MS = 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 72 * 60 * 60 * 1000;
-const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const INVITE_CODE_PATTERN = /^KFB[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/;
 const TEAM_ROLES = new Set(["admin", "evaluator", "viewer"]);
 const TEAM_MEMBER_STATUSES = new Set(["active", "disabled"]);
 
@@ -373,18 +374,21 @@ function normalizeEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ? email : "";
 }
 
-function maskEmail(value) {
-  const [name, domain] = String(value || "").split("@");
-  if (!name || !domain) return "已指定邮箱";
-  const visible = name.slice(0, Math.min(2, name.length));
-  return `${visible}${"*".repeat(Math.max(2, Math.min(6, name.length - visible.length)))}@${domain}`;
+function normalizeInviteCode(value) {
+  const compact = cleanString(value, 40).toUpperCase().replace(/[\s-]+/g, "");
+  return INVITE_CODE_PATTERN.test(compact) ? compact : "";
 }
 
-function createInviteToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  let binary = "";
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+function formatInviteCode(value) {
+  const compact = normalizeInviteCode(value);
+  if (!compact) return "";
+  return `${compact.slice(0, 3)}-${compact.slice(3, 7)}-${compact.slice(7, 11)}-${compact.slice(11, 15)}`;
+}
+
+function createInviteCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const random = Array.from(bytes, (byte) => INVITE_CODE_ALPHABET[byte & 31]).join("");
+  return `KFB${random}`;
 }
 
 function parseJson(value, fallback = {}) {
@@ -493,25 +497,52 @@ async function handleTeamLogin(request, env) {
   return withSecurityHeaders(request, env, authResponse);
 }
 
-async function findInvite(env, rawToken) {
-  if (!INVITE_TOKEN_PATTERN.test(rawToken)) return null;
-  const tokenHash = await sha256Hex(rawToken);
+async function findInvite(env, rawCode) {
+  const inviteCode = normalizeInviteCode(rawCode);
+  if (!inviteCode) return null;
+  const codeHash = await sha256Hex(inviteCode);
   return env.DB.prepare(`
-    SELECT id, email, role, expires_at, used_at, revoked_at
+    SELECT id, code_hint, role, expires_at, used_at, revoked_at, reservation_id, reserved_at
     FROM team_invites
-    WHERE token_hash = ?
-  `).bind(tokenHash).first();
+    WHERE code_hash = ?
+  `).bind(codeHash).first();
 }
 
 function inviteIsActive(invite) {
-  return Boolean(invite && !invite.used_at && !invite.revoked_at && new Date(invite.expires_at).getTime() > Date.now());
+  if (!invite || invite.used_at || invite.revoked_at || new Date(invite.expires_at).getTime() <= Date.now()) return false;
+  if (!invite.reservation_id || !invite.reserved_at) return true;
+  const reservedAt = new Date(`${String(invite.reserved_at).replace(" ", "T")}Z`).getTime();
+  return !Number.isFinite(reservedAt) || Date.now() - reservedAt >= 10 * 60 * 1000;
 }
 
-async function handleInviteInfo(request, env, rawToken) {
-  const invite = await findInvite(env, rawToken);
-  if (!inviteIsActive(invite)) return json(request, env, { error: "邀请链接无效、已使用或已过期" }, 404);
+async function reserveInvite(env, inviteId) {
+  const reservationId = crypto.randomUUID();
+  const result = await env.DB.prepare(`
+    UPDATE team_invites
+    SET reservation_id = ?, reserved_at = datetime('now')
+    WHERE id = ?
+      AND used_at IS NULL
+      AND revoked_at IS NULL
+      AND datetime(expires_at) > datetime('now')
+      AND (reservation_id IS NULL OR reserved_at IS NULL OR reserved_at < datetime('now', '-10 minutes'))
+  `).bind(reservationId, inviteId).run();
+  return result.meta?.changes === 1 ? reservationId : "";
+}
+
+async function releaseInviteReservation(env, inviteId, reservationId) {
+  if (!reservationId) return;
+  await env.DB.prepare(`
+    UPDATE team_invites
+    SET reservation_id = NULL, reserved_at = NULL
+    WHERE id = ? AND reservation_id = ? AND used_at IS NULL
+  `).bind(inviteId, reservationId).run();
+}
+
+async function handleInviteInfo(request, env) {
+  const body = await parseBody(request, 4_000);
+  const invite = await findInvite(env, body.inviteCode);
+  if (!inviteIsActive(invite)) return json(request, env, { error: "邀请码无效、已使用或已过期" }, 404);
   return json(request, env, {
-    emailHint: maskEmail(invite.email),
     role: invite.role,
     roleLabel: roleLabel(invite.role),
     expiresAt: invite.expires_at,
@@ -521,14 +552,13 @@ async function handleInviteInfo(request, env, rawToken) {
 
 async function handleTeamRegister(request, env) {
   const body = await parseBody(request, 16_000);
-  const rawToken = cleanString(body.inviteToken, 80);
-  const invite = await findInvite(env, rawToken);
-  if (!inviteIsActive(invite)) return json(request, env, { error: "邀请链接无效、已使用或已过期" }, 404);
+  const invite = await findInvite(env, body.inviteCode);
+  if (!inviteIsActive(invite)) return json(request, env, { error: "邀请码无效、已使用或已过期" }, 404);
 
   const email = normalizeEmail(body.email);
   const displayName = cleanString(body.displayName, 40);
   const password = typeof body.password === "string" ? body.password : "";
-  if (!email || email !== invite.email) return json(request, env, { error: "请输入邀请中指定的邮箱" }, 400);
+  if (!email) return json(request, env, { error: "请输入有效的工作邮箱" }, 400);
   if (displayName.length < 2) return json(request, env, { error: "姓名或工作称呼至少填写2个字符" }, 400);
   if (password.length < 12 || password.length > 128) return json(request, env, { error: "密码需为12至128个字符" }, 400);
 
@@ -536,6 +566,9 @@ async function handleTeamRegister(request, env) {
   if (existingMember) return json(request, env, { error: "该邮箱已加入部门，请直接登录" }, 409);
 
   const auth = getAuth(request, env);
+  const reservationId = await reserveInvite(env, invite.id);
+  if (!reservationId) return json(request, env, { error: "邀请码正在被使用或已失效，请重新确认" }, 409);
+
   let user = await env.DB.prepare('SELECT id, email FROM "user" WHERE email = ?').bind(email).first();
   let loginResponse = null;
 
@@ -544,26 +577,49 @@ async function handleTeamRegister(request, env) {
       const created = await auth.api.signUpEmail({ body: { email, password, name: displayName } });
       user = created?.user || null;
     } catch {
+      await releaseInviteReservation(env, invite.id, reservationId);
       return json(request, env, { error: "账号创建失败，请检查邮箱和密码后重试" }, 400);
     }
   } else {
     loginResponse = await authPost(auth, request, "/api/auth/sign-in/email", { email, password, rememberMe: false });
-    if (!loginResponse.ok) return json(request, env, { error: "该邮箱已有账号，输入的密码不正确" }, 409);
+    if (!loginResponse.ok) {
+      await releaseInviteReservation(env, invite.id, reservationId);
+      return json(request, env, { error: "该邮箱已有账号，输入的密码不正确" }, 409);
+    }
   }
-  if (!user?.id) return json(request, env, { error: "账号创建失败，请稍后重试" }, 500);
+  if (!user?.id) {
+    await releaseInviteReservation(env, invite.id, reservationId);
+    return json(request, env, { error: "账号创建失败，请稍后重试" }, 500);
+  }
 
-  await env.DB.batch([
-    env.DB.prepare(`
-      INSERT INTO team_members (user_id, email, display_name, role, status, created_at, last_active_at)
-      VALUES (?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
-    `).bind(user.id, email, displayName, invite.role),
-    env.DB.prepare(`
-      UPDATE team_invites
-      SET used_by_user_id = ?, used_at = datetime('now')
-      WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL
-    `).bind(user.id, invite.id),
-    auditStatement(env, user.id, "invite.accept", "invite", invite.id, { role: invite.role })
-  ]);
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO team_members (user_id, email, display_name, role, status, created_at, last_active_at)
+        SELECT ?, ?, ?, role, 'active', datetime('now'), datetime('now')
+        FROM team_invites
+        WHERE id = ? AND reservation_id = ? AND used_at IS NULL AND revoked_at IS NULL
+      `).bind(user.id, email, displayName, invite.id, reservationId),
+      env.DB.prepare(`
+        INSERT INTO team_audit_logs (user_id, action, target_type, target_id, metadata_json, created_at)
+        SELECT ?, 'invite.accept', 'invite', id, ?, datetime('now')
+        FROM team_invites
+        WHERE id = ? AND reservation_id = ? AND used_at IS NULL AND revoked_at IS NULL
+      `).bind(user.id, JSON.stringify({ role: invite.role }), invite.id, reservationId),
+      env.DB.prepare(`
+        UPDATE team_invites
+        SET used_by_user_id = ?, used_at = datetime('now'), reservation_id = NULL, reserved_at = NULL
+        WHERE id = ? AND reservation_id = ? AND used_at IS NULL AND revoked_at IS NULL
+      `).bind(user.id, invite.id, reservationId)
+    ]);
+    if (results[0]?.meta?.changes !== 1 || results[2]?.meta?.changes !== 1) {
+      await releaseInviteReservation(env, invite.id, reservationId);
+      return json(request, env, { error: "邀请码已被其他成员使用" }, 409);
+    }
+  } catch {
+    await releaseInviteReservation(env, invite.id, reservationId);
+    return json(request, env, { error: "该邮箱已加入部门或邀请码已被使用" }, 409);
+  }
 
   if (!loginResponse) {
     loginResponse = await authPost(auth, request, "/api/auth/sign-in/email", { email, password, rememberMe: false });
@@ -572,26 +628,22 @@ async function handleTeamRegister(request, env) {
   return withSecurityHeaders(request, env, loginResponse);
 }
 
-async function createTeamInvite(request, env, { email, role, createdByUserId = null }) {
-  const rawToken = createInviteToken();
-  const tokenHash = await sha256Hex(rawToken);
+async function createTeamInvite(env, { role, createdByUserId = null }) {
+  const normalizedCode = createInviteCode();
+  const displayCode = formatInviteCode(normalizedCode);
+  const codeHash = await sha256Hex(normalizedCode);
   const id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
 
   await env.DB.batch([
     env.DB.prepare(`
-      UPDATE team_invites SET revoked_at = datetime('now')
-      WHERE email = ? AND used_at IS NULL AND revoked_at IS NULL
-    `).bind(email),
-    env.DB.prepare(`
-      INSERT INTO team_invites (id, token_hash, email, role, created_by_user_id, expires_at)
+      INSERT INTO team_invites (id, code_hash, code_hint, role, created_by_user_id, expires_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(id, tokenHash, email, role, createdByUserId, expiresAt),
+    `).bind(id, codeHash, displayCode.slice(-4), role, createdByUserId, expiresAt),
     auditStatement(env, createdByUserId, "invite.create", "invite", id, { role })
   ]);
 
-  const inviteUrl = new URL(`/team.html?invite=${encodeURIComponent(rawToken)}`, request.url).toString();
-  return { id, email, role, roleLabel: roleLabel(role), inviteUrl, expiresAt };
+  return { id, code: displayCode, role, roleLabel: roleLabel(role), expiresAt };
 }
 
 async function handleAdminBootstrapInvite(request, env) {
@@ -601,10 +653,11 @@ async function handleAdminBootstrapInvite(request, env) {
   if (Number(memberCount?.count || 0) > 0) {
     return json(request, env, { error: "团队已建立，请由团队管理员在工作台中邀请成员" }, 409);
   }
-  const body = await parseBody(request, 8_000);
-  const email = normalizeEmail(body.email);
-  if (!email) return json(request, env, { error: "请输入有效邮箱" }, 400);
-  const invite = await createTeamInvite(request, env, { email, role: "admin" });
+  await env.DB.prepare(`
+    UPDATE team_invites SET revoked_at = datetime('now')
+    WHERE created_by_user_id IS NULL AND used_at IS NULL AND revoked_at IS NULL
+  `).run();
+  const invite = await createTeamInvite(env, { role: "admin" });
   return json(request, env, { ok: true, invite }, 201);
 }
 
@@ -613,12 +666,8 @@ async function handleCreateTeamInvite(request, env) {
   const denied = requireRole(request, env, identity, ["admin"]);
   if (denied) return denied;
   const body = await parseBody(request, 8_000);
-  const email = normalizeEmail(body.email);
   const role = cleanString(body.role, 20);
-  if (!email) return json(request, env, { error: "请输入有效邮箱" }, 400);
   if (!TEAM_ROLES.has(role)) return json(request, env, { error: "成员角色无效" }, 400);
-  const existing = await env.DB.prepare("SELECT user_id FROM team_members WHERE email = ?").bind(email).first();
-  if (existing) return json(request, env, { error: "该邮箱已经是部门成员" }, 409);
 
   const pending = await env.DB.prepare(`
     SELECT COUNT(*) AS count FROM team_invites
@@ -626,8 +675,7 @@ async function handleCreateTeamInvite(request, env) {
   `).bind(identity.member.user_id).first();
   if (Number(pending?.count || 0) >= 30) return json(request, env, { error: "今日邀请数量已达上限" }, 429);
 
-  const invite = await createTeamInvite(request, env, {
-    email,
+  const invite = await createTeamInvite(env, {
     role,
     createdByUserId: identity.member.user_id
   });
@@ -707,7 +755,7 @@ async function handleTeamSummary(request, env) {
       : Promise.resolve({ results: [] }),
     isTeamAdmin
       ? env.DB.prepare(`
-          SELECT id, email, role, expires_at, created_at
+          SELECT id, code_hint, role, expires_at, created_at
           FROM team_invites
           WHERE used_at IS NULL AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')
           ORDER BY created_at DESC LIMIT 50
@@ -1163,6 +1211,7 @@ export async function onRequestPost(context) {
   const path = routePath(request);
   try {
     if (path === "/api/team/login") return handleTeamLogin(request, env);
+    if (path === "/api/team/invite-code") return handleInviteInfo(request, env);
     if (path === "/api/team/register") return handleTeamRegister(request, env);
     if (path === "/api/team/logout") return handleTeamLogout(request, env);
     if (path === "/api/team/change-password") return handleChangePassword(request, env);
@@ -1192,7 +1241,6 @@ export async function onRequestGet(context) {
   try {
     if (path === "/api/team/session") return handleTeamSession(request, env);
     if (path === "/api/team/summary") return handleTeamSummary(request, env);
-    if (path.startsWith("/api/team/invites/")) return handleInviteInfo(request, env, path.split("/").pop());
     if (path.startsWith("/api/team/records/")) return handleTeamRecord(request, env, path.split("/").pop());
     const sharedReport = reportPathMatch(path);
     if (sharedReport) {
