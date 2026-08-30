@@ -1105,6 +1105,34 @@ svg {
   transform: scale(.95);
 }
 
+.rating-feedback {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0;
+  padding: 8px 11px;
+  border-top: 1px solid #cfe2de;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.rating-feedback[hidden] {
+  display: none;
+}
+
+.rating-feedback strong {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+}
+
+.rating-feedback span {
+  color: #355d59;
+}
+
 .domain-note {
   display: grid;
   gap: 5px;
@@ -1881,6 +1909,16 @@ svg {
     justify-content: start;
     border-top: 1px solid var(--line);
     border-left: 0;
+  }
+
+  .rating-feedback {
+    display: grid;
+    gap: 2px;
+    padding-inline: 10px;
+  }
+
+  .rating-feedback[hidden] {
+    display: none;
   }
 
   .impact-control {

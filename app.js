@@ -8,11 +8,41 @@ const API_ORIGIN = location.hostname === "sensory-assessment-site.pages.dev" || 
   : "https://sensory-assessment-site.pages.dev";
 
 const scoreLevels = {
-  1: { label: "全程协助", short: "高支持", className: "low" },
-  2: { label: "大量协助", short: "较高支持", className: "low" },
-  3: { label: "部分提示", short: "发展中", className: "mid" },
-  4: { label: "少量提示", short: "较稳定", className: "high" },
-  5: { label: "独立稳定", short: "稳定", className: "high" }
+  1: {
+    label: "全程协助",
+    short: "高支持",
+    className: "low",
+    range: "完成少于25%",
+    performance: "难以独立启动或维持任务，需持续手把手或身体协助完成。"
+  },
+  2: {
+    label: "大量协助",
+    short: "较高支持",
+    className: "low",
+    range: "完成25-49%",
+    performance: "能完成少量步骤，仍需大量身体协助、示范或反复提示。"
+  },
+  3: {
+    label: "部分提示",
+    short: "发展中",
+    className: "mid",
+    range: "完成50-74%",
+    performance: "能完成主要步骤，需要间歇性的身体、示范、视觉或语言提示。"
+  },
+  4: {
+    label: "少量提示",
+    short: "较稳定",
+    className: "high",
+    range: "完成75-89%",
+    performance: "大部分时间能正确完成，仅需少量或偶发提示。"
+  },
+  5: {
+    label: "独立稳定",
+    short: "稳定",
+    className: "high",
+    range: "完成至少90%",
+    performance: "在当前自然情境中可独立、稳定完成，且表现能够重复。"
+  }
 };
 
 const impactLabels = ["无明显影响", "轻度影响", "中度影响", "显著影响"];
@@ -403,9 +433,10 @@ function renderDomains() {
             <div class="item-row">
               <div class="item-label">${escapeHtml(item.label)}<small>${escapeHtml(item.observe)}</small></div>
               <div class="rating-scale" data-domain="${domain.id}" data-item="${item.id}" data-value="">
-                ${[1, 2, 3, 4, 5].map((score) => `<button class="rating-button" type="button" data-score="${score}" title="${score} · ${scoreLevels[score].label}">${score}</button>`).join("")}
-                <button class="rating-button na selected" type="button" data-score="" title="未评估">—</button>
+                ${[1, 2, 3, 4, 5].map((score) => `<button class="rating-button" type="button" data-score="${score}" title="${score}分 · ${scoreLevels[score].label} · ${scoreLevels[score].range}" aria-label="${score}分，${scoreLevels[score].label}，${scoreLevels[score].range}" aria-pressed="false">${score}</button>`).join("")}
+                <button class="rating-button na selected" type="button" data-score="" title="未评估" aria-label="未评估，不计分" aria-pressed="true">—</button>
               </div>
+              <p class="rating-feedback" role="status" aria-live="polite" hidden></p>
             </div>
           `).join("")}
         </div>
@@ -416,6 +447,29 @@ function renderDomains() {
       </div>
     </details>
   `).join("");
+}
+
+function updateRatingFeedback(scale) {
+  const selectedScore = scale.dataset.value;
+  scale.querySelectorAll(".rating-button").forEach((button) => {
+    const isSelected = button.dataset.score === selectedScore;
+    button.classList.toggle("selected", isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
+  });
+
+  const feedback = scale.closest(".item-row")?.querySelector(".rating-feedback");
+  if (!feedback) return;
+  const level = scoreLevels[selectedScore];
+  if (!level) {
+    feedback.hidden = true;
+    feedback.textContent = "";
+    feedback.removeAttribute("data-score");
+    return;
+  }
+
+  feedback.dataset.score = selectedScore;
+  feedback.innerHTML = `<strong>${selectedScore}分 · ${escapeHtml(level.label)}（${escapeHtml(level.range)}）</strong><span>${escapeHtml(level.performance)}</span>`;
+  feedback.hidden = false;
 }
 
 function collectData() {
@@ -491,9 +545,7 @@ function applyData(data = {}) {
       const scale = domainList.querySelector(`.rating-scale[data-domain="${domain.id}"][data-item="${item.id}"]`);
       if (!scale) return;
       scale.dataset.value = Number.isFinite(Number(score)) && Number(score) >= 1 ? String(score) : "";
-      scale.querySelectorAll(".rating-button").forEach((button) => {
-        button.classList.toggle("selected", button.dataset.score === scale.dataset.value);
-      });
+      updateRatingFeedback(scale);
     });
     document.getElementById(`${domain.id}Impact`).value = String(value.impact ?? 0);
     document.getElementById(`${domain.id}Support`).value = value.support || "部分提示";
@@ -988,7 +1040,7 @@ function attachEvents() {
     if (!button) return;
     const scale = button.closest(".rating-scale");
     scale.dataset.value = button.dataset.score;
-    scale.querySelectorAll(".rating-button").forEach((item) => item.classList.toggle("selected", item === button));
+    updateRatingFeedback(scale);
     refreshAnalysis();
   });
 
