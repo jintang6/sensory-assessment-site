@@ -13,6 +13,7 @@ fi
 cp "$PROJECT_DIR/index.html" "$BUILD_DIR/index.html"
 cp "$PROJECT_DIR/styles.css" "$BUILD_DIR/styles.css"
 cp "$PROJECT_DIR/app.js" "$BUILD_DIR/app.js"
+cp "$PROJECT_DIR/assessment-domains.js" "$BUILD_DIR/assessment-domains.js"
 cp "$PROJECT_DIR/assessment-engine.js" "$BUILD_DIR/assessment-engine.js"
 cp "$PROJECT_DIR/admin.html" "$BUILD_DIR/admin.html"
 cp "$PROJECT_DIR/admin.css" "$BUILD_DIR/admin.css"
@@ -25,6 +26,20 @@ cp "$PROJECT_DIR/shared-report.html" "$BUILD_DIR/shared-report.html"
 cp "$PROJECT_DIR/shared-report.css" "$BUILD_DIR/shared-report.css"
 cp "$PROJECT_DIR/shared-report.js" "$BUILD_DIR/shared-report.js"
 cp "$PROJECT_DIR/_routes.json" "$BUILD_DIR/_routes.json"
+mkdir -p "$BUILD_DIR/assets"
+cp "$PROJECT_DIR/assets/NotoSansSC-Regular-GB2312.ttf" "$BUILD_DIR/assets/NotoSansSC-Regular-GB2312.ttf"
+cp "$PROJECT_DIR/assets/NotoSansSC-OFL.txt" "$BUILD_DIR/assets/NotoSansSC-OFL.txt"
 mkdir -p "$BUILD_DIR/vendor"
 cp "$PROJECT_DIR/vendor/docx.umd.js" "$BUILD_DIR/vendor/docx.umd.js"
 cp "$PROJECT_DIR/vendor/docx.LICENSE.txt" "$BUILD_DIR/vendor/docx.LICENSE.txt"
+
+for route_module in "ot:ot" "st:st" "movement:pt"; do
+  route=${route_module%%:*}
+  module=${route_module##*:}
+  mkdir -p "$BUILD_DIR/$route"
+  sed \
+    -e 's#<head>#<head>\
+  <base href="../">#' \
+    -e "s/data-module-page=\"si\"/data-module-page=\"$module\"/" \
+    "$PROJECT_DIR/index.html" > "$BUILD_DIR/$route/index.html"
+done

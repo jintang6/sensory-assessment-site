@@ -3,3 +3,5 @@
 .admin-token
 dist/
 node_modules/
+outputs/
+scripts/provision-teacher-accounts.mjs

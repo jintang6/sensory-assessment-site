@@ -2,6 +2,7 @@ import {
   assessmentReportFilename,
   buildAssessmentReportDocument,
   buildStudentProgressDocument,
+  loadReportFontData,
   studentProgressFilename
 } from "./report-docx.js";
 
@@ -20,8 +21,11 @@ const authView = document.getElementById("authView");
 const dashboardView = document.getElementById("dashboardView");
 const loginPanel = document.getElementById("loginPanel");
 const registerPanel = document.getElementById("registerPanel");
+const forcedPasswordPanel = document.getElementById("forcedPasswordPanel");
 const teamRecordDialog = document.getElementById("teamRecordDialog");
+const teamTrashDialog = document.getElementById("teamTrashDialog");
 const accountDialog = document.getElementById("accountDialog");
+const passwordResetDialog = document.getElementById("passwordResetDialog");
 const recordTableBody = document.getElementById("teamRecordTableBody");
 const recordSearch = document.getElementById("teamRecordSearch");
 const rosterTableBody = document.getElementById("teamRosterTableBody");
@@ -31,8 +35,12 @@ const studentProfileDialog = document.getElementById("studentProfileDialog");
 const studentFormDialog = document.getElementById("studentFormDialog");
 const goalDialog = document.getElementById("goalDialog");
 const interventionDialog = document.getElementById("interventionDialog");
+const teamDrawer = document.getElementById("teamDrawer");
+const teamHelpDialog = document.getElementById("teamHelpDialog");
+const teamFeedbackDialog = document.getElementById("teamFeedbackDialog");
 
 let summary = null;
+let sessionUser = null;
 let currentRecord = null;
 let currentProfile = null;
 let refreshTimer = null;
@@ -43,6 +51,25 @@ const settingLabels = { classroom: "课堂", therapy: "康复训练", daily_livi
 const observerLabels = { therapist: "康复治疗师观察", teacher: "教师反馈", family: "家庭反馈", multidisciplinary: "跨专业共同观察" };
 const responseLabels = { limited: "反应有限", emerging: "开始出现", stable: "较稳定", generalized: "可泛化" };
 const supportLabels = { 1: "全程协助", 2: "大量协助", 3: "部分提示", 4: "少量提示", 5: "独立稳定" };
+const professionalModuleLabels = { si: "感觉统合 SI", ot: "作业治疗 OT", st: "言语语言 ST", pt: "运动功能 / PT" };
+
+function assessmentRoute(moduleId) {
+  return { si: "./", ot: "./ot/", st: "./st/", pt: "./movement/" }[moduleId] || "./";
+}
+
+function currentAssessmentRoute() {
+  return assessmentRoute(summary?.currentUser?.primaryModule === "all" ? "si" : summary?.currentUser?.primaryModule);
+}
+
+function safeReturnPath() {
+  const params = new URLSearchParams(location.search);
+  if (["module", "inactive", "unavailable"].includes(params.get("reason"))) return "";
+  const rawValue = params.get("return") || "";
+  const value = { "/ot": "/ot/", "/st": "/st/", "/movement": "/movement/" }[rawValue] || rawValue;
+  if (!value.startsWith("/") || value.startsWith("//")) return "";
+  const allowed = ["/", "/index.html", "/ot/", "/st/", "/movement/"];
+  return allowed.some((prefix) => value === prefix || value.startsWith(`${prefix}?`)) ? value : "";
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -75,6 +102,68 @@ function showToast(message) {
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
+function closeTeamDrawer() {
+  document.body.classList.remove("drawer-open");
+  teamDrawer.setAttribute("aria-hidden", "true");
+  document.getElementById("teamMenuBtn").setAttribute("aria-expanded", "false");
+  document.getElementById("teamDrawerBackdrop").hidden = true;
+}
+
+function openTeamDrawer() {
+  document.body.classList.add("drawer-open");
+  teamDrawer.setAttribute("aria-hidden", "false");
+  document.getElementById("teamMenuBtn").setAttribute("aria-expanded", "true");
+  document.getElementById("teamDrawerBackdrop").hidden = false;
+}
+
+function configureTeamDrawer(user) {
+  const signedIn = Boolean(user?.id);
+  const displayName = user?.displayName || "未登录";
+  document.getElementById("teamDrawerAvatar").textContent = signedIn ? (displayName.slice(0, 1) || "知") : "知";
+  document.getElementById("teamDrawerUserName").textContent = displayName;
+  document.getElementById("teamDrawerUserRole").textContent = signedIn ? `${user.roleLabel} · ${user.primaryModuleLabel}` : "团队工作台";
+  document.getElementById("teamDrawerUserEmail").textContent = user?.email || "请先登录账号";
+  document.getElementById("teamDrawerAssignment").textContent = user?.assignmentNote || (signedIn ? "可查看本部门学生档案与专业评估记录。" : "登录后显示专业分工与团队权限。");
+  document.getElementById("teamDrawerMembersLink").hidden = user?.role !== "admin";
+  document.getElementById("teamDrawerAdminLink").hidden = user?.isSuperAdmin !== true;
+  document.getElementById("teamDrawerAccountLink").hidden = !signedIn;
+  document.getElementById("teamDrawerLogoutBtn").hidden = !signedIn;
+
+  const allowedModules = user?.role === "admin" ? Object.keys(professionalModuleLabels) : user?.moduleAccess || [];
+  document.querySelectorAll("[data-team-drawer-module]").forEach((link) => {
+    const allowed = signedIn && allowedModules.includes(link.dataset.teamDrawerModule);
+    link.classList.toggle("locked", !allowed);
+    link.setAttribute("aria-disabled", String(!allowed));
+    link.title = allowed ? "" : "登录后按专业授权进入";
+  });
+}
+
+function analyticsSessionId() {
+  let id = sessionStorage.getItem("sensoryAnonymousSession");
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now().toString(36)}`;
+    sessionStorage.setItem("sensoryAnonymousSession", id);
+  }
+  return id;
+}
+
+async function sendAnalytics(endpoint) {
+  try {
+    await fetch(`${API_ORIGIN}/api/analytics/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: analyticsSessionId(),
+        path: location.pathname,
+        deviceType: innerWidth <= 680 ? "mobile" : innerWidth <= 1100 ? "tablet" : "desktop"
+      }),
+      keepalive: true
+    });
+  } catch {
+    // Anonymous operations statistics never block the team workflow.
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(`${API_ORIGIN}${path}`, {
     credentials: "include",
@@ -96,12 +185,15 @@ async function api(path, options = {}) {
 
 function showLogin() {
   clearInterval(refreshTimer);
+  sessionUser = null;
   authView.hidden = false;
   dashboardView.hidden = true;
   document.getElementById("accountBtn").hidden = true;
   document.getElementById("teamLogoutBtn").hidden = true;
   loginPanel.hidden = false;
   registerPanel.hidden = true;
+  forcedPasswordPanel.hidden = true;
+  configureTeamDrawer(null);
 }
 
 function showRegister() {
@@ -109,6 +201,21 @@ function showRegister() {
   dashboardView.hidden = true;
   loginPanel.hidden = true;
   registerPanel.hidden = false;
+  forcedPasswordPanel.hidden = true;
+}
+
+function showForcedPassword(session) {
+  clearInterval(refreshTimer);
+  authView.hidden = false;
+  dashboardView.hidden = true;
+  loginPanel.hidden = true;
+  registerPanel.hidden = true;
+  forcedPasswordPanel.hidden = false;
+  document.getElementById("accountBtn").hidden = true;
+  document.getElementById("teamLogoutBtn").hidden = false;
+  configureTeamDrawer(session.user);
+  document.getElementById("forcedPasswordIdentity").textContent = `${session.user.displayName}，这是初始或重置后的临时账号。完成改密前不能进入评估与学生档案。`;
+  document.getElementById("forcedCurrentPassword").focus();
 }
 
 function showDashboard() {
@@ -116,6 +223,7 @@ function showDashboard() {
   dashboardView.hidden = false;
   document.getElementById("accountBtn").hidden = false;
   document.getElementById("teamLogoutBtn").hidden = false;
+  forcedPasswordPanel.hidden = true;
 }
 
 function formatInviteCodeInput(value) {
@@ -147,12 +255,30 @@ async function verifyInviteCode() {
 async function loadSession() {
   try {
     const data = await api("/api/team/session");
+    sessionUser = data.user;
+    configureTeamDrawer(data.user);
+    if (data.user.passwordChangeRequired) {
+      showForcedPassword(data);
+      return data;
+    }
+    const returnPath = safeReturnPath();
+    if (returnPath) {
+      location.replace(returnPath);
+      return data;
+    }
     showDashboard();
     await loadSummary();
     refreshTimer = setInterval(() => loadSummary({ quiet: true }), 30_000);
     return data;
   } catch (error) {
     showLogin();
+    const reason = new URLSearchParams(location.search).get("reason");
+    const messages = {
+      inactive: "账号已停用，请联系部门管理员。",
+      module: "当前账号没有该专业模块的填写权限。",
+      unavailable: "登录服务暂时不可用，请稍后刷新。"
+    };
+    if (messages[reason]) document.getElementById("loginError").textContent = messages[reason];
     return null;
   }
 }
@@ -168,6 +294,7 @@ function renderMetrics(metrics) {
   document.getElementById("teamTodayCount").textContent = String(metrics.today_updates || 0);
   document.getElementById("teamMemberCount").textContent = String(metrics.active_members || 0);
   document.getElementById("teamOnlineCount").textContent = String(metrics.online_members || 0);
+  document.getElementById("teamTrashCount").textContent = String(metrics.trash_records || 0);
 }
 
 function renderRoster() {
@@ -215,6 +342,7 @@ function scoreClass(value) {
 
 function renderRecords() {
   const query = recordSearch.value.trim().toLowerCase();
+  const isAdmin = summary?.currentUser?.role === "admin";
   const records = (summary?.records || []).filter((row) => [row.student_name, row.class_name, row.student_code, row.primary_need, row.assessment_date, row.owner_name]
     .join(" ").toLowerCase().includes(query));
   document.getElementById("teamRecordEmpty").hidden = records.length > 0;
@@ -228,7 +356,7 @@ function renderRecords() {
       <td>${Number(row.coverage) || 0}%</td>
       <td><span class="version-pill">v${Number(row.version) || 1}</span></td>
       <td>${escapeHtml(formatDateTime(row.updated_at))}<br><small>${escapeHtml(row.updated_by_name || "—")}</small></td>
-      <td><button class="table-action" type="button" data-team-record-id="${escapeHtml(row.id)}">查看</button></td>
+      <td><div class="table-action-group"><button class="table-action" type="button" data-team-record-id="${escapeHtml(row.id)}">查看</button>${isAdmin ? `<button class="table-action danger" type="button" data-team-record-delete-id="${escapeHtml(row.id)}" data-team-record-label="${escapeHtml(row.student_name || row.student_code || "该评估报告")}">删除</button>` : ""}</div></td>
     </tr>
   `).join("");
 }
@@ -255,20 +383,44 @@ function roleOptions(selected) {
   ].map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
+function moduleOptions(selected, role) {
+  const options = role === "evaluator"
+    ? Object.entries(professionalModuleLabels)
+    : [["all", "全专业"]];
+  return options.map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
+}
+
 function renderMembers() {
   const body = document.getElementById("memberTableBody");
   body.innerHTML = (summary?.members || []).map((member) => {
     const isSelf = member.user_id === summary.currentUser.id;
+    const mustChangePassword = Number(member.password_change_required) === 1;
     return `
       <tr data-member-id="${escapeHtml(member.user_id)}">
-        <td><strong>${escapeHtml(member.display_name)}</strong>${isSelf ? "（当前账号）" : ""}</td>
+        <td class="student-name-cell"><strong>${escapeHtml(member.display_name)}${isSelf ? "（当前账号）" : ""}</strong><small>${escapeHtml(member.assignment_note || "")}</small></td>
         <td>${escapeHtml(member.email)}</td>
         <td><select data-member-role ${isSelf ? "disabled" : ""}>${roleOptions(member.role)}</select></td>
+        <td><select data-member-module ${isSelf || member.role !== "evaluator" ? "disabled" : ""}>${moduleOptions(member.primary_module || "all", member.role)}</select></td>
         <td><select data-member-status ${isSelf ? "disabled" : ""}><option value="active" ${member.status === "active" ? "selected" : ""}>启用</option><option value="disabled" ${member.status === "disabled" ? "selected" : ""}>停用</option></select></td>
+        <td><span class="member-security ${mustChangePassword ? "attention" : "ready"}">${mustChangePassword ? "首次登录待改密" : "密码已设置"}</span></td>
         <td>${escapeHtml(formatDateTime(member.last_active_at))}</td>
-        <td>${isSelf ? '<span class="member-status active">当前</span>' : '<button class="table-action" type="button" data-save-member>保存</button>'}</td>
+        <td>${isSelf ? '<span class="member-status active">当前</span>' : `<div class="member-row-actions"><button class="table-action" type="button" data-save-member>保存权限</button><button class="table-action secondary" type="button" data-reset-member-password>重置密码</button></div>`}</td>
       </tr>`;
   }).join("");
+}
+
+function renderFeedback() {
+  const labels = { suggestion: "功能建议", content: "评估内容", bug: "故障问题", workflow: "操作流程", other: "其他" };
+  const rows = summary?.feedback || [];
+  const openCount = rows.filter((item) => item.status === "open").length;
+  document.getElementById("openFeedbackCount").textContent = String(openCount);
+  document.getElementById("feedbackAdminList").innerHTML = rows.length
+    ? rows.map((item) => `<article class="feedback-admin-item ${item.status}">
+        <header><span>${escapeHtml(labels[item.category] || item.category)}</span><strong>${escapeHtml(item.author_name || "团队成员")}</strong><time>${escapeHtml(formatDateTime(item.created_at))}</time></header>
+        <p>${escapeHtml(item.content)}</p>
+        <footer><small>来自 ${escapeHtml(item.page_path || "/")}</small><button class="table-action" type="button" data-feedback-id="${escapeHtml(item.id)}" data-feedback-status="${item.status === "open" ? "resolved" : "open"}">${item.status === "open" ? "标记已处理" : "重新打开"}</button></footer>
+      </article>`).join("")
+    : '<div class="team-empty">尚未收到团队反馈</div>';
 }
 
 function renderInvites() {
@@ -282,12 +434,17 @@ function renderInvites() {
 const auditLabels = {
   "member.login": "成员登录",
   "member.password_change": "修改密码",
+  "member.password_reset": "管理员重置密码",
   "member.update": "调整成员权限",
   "invite.create": "创建成员邀请",
   "invite.accept": "接受成员邀请",
   "assessment.sync": "同步评估版本",
   "assessment.view": "查看评估档案",
   "assessment.delete": "删除评估档案",
+  "assessment.trash": "将评估报告移入回收站",
+  "assessment.restore": "从回收站恢复评估报告",
+  "assessment.purge": "永久删除评估报告",
+  "assessment.trash_expired": "自动清理到期回收站记录",
   "student.roster_import": "导入学生名单",
   "student.profile_view": "查看学生康复档案",
   "student.create": "新增学生",
@@ -296,7 +453,9 @@ const auditLabels = {
   "goal.create": "新增康复目标",
   "goal.update": "更新康复目标",
   "intervention.create": "新增干预记录",
-  "intervention.delete": "删除误录干预记录"
+  "intervention.delete": "删除误录干预记录",
+  "feedback.create": "提交意见反馈",
+  "feedback.update": "更新反馈状态"
 };
 
 function renderAudit() {
@@ -315,12 +474,15 @@ function renderSummary() {
   const canEdit = isAdmin || summary.currentUser.role === "evaluator";
   document.getElementById("teamName").textContent = summary.team.name;
   document.getElementById("teamHeaderSubtitle").textContent = `${summary.team.name} · 邀请制协作`;
-  document.getElementById("memberGreeting").textContent = `${summary.currentUser.displayName}，欢迎回来`;
-  document.getElementById("memberRole").textContent = summary.currentUser.roleLabel;
+  document.getElementById("memberGreeting").textContent = `${summary.currentUser.displayName}，欢迎回来${summary.currentUser.assignmentNote ? ` · ${summary.currentUser.assignmentNote}` : ""}`;
+  document.getElementById("memberRole").textContent = `${summary.currentUser.roleLabel} · ${summary.currentUser.primaryModuleLabel}`;
   document.getElementById("membersTabBtn").hidden = !isAdmin;
+  document.getElementById("feedbackTabBtn").hidden = !isAdmin;
   document.getElementById("auditTabBtn").hidden = !isAdmin;
+  configureTeamDrawer(summary.currentUser);
   document.getElementById("newAssessmentBtn").hidden = !canEdit;
   document.getElementById("deleteTeamRecordBtn").hidden = !isAdmin;
+  document.getElementById("openTeamTrashBtn").hidden = !isAdmin;
   document.getElementById("openInAssessmentBtn").hidden = !canEdit;
   document.getElementById("addTeamStudentBtn").hidden = !isAdmin;
   renderMetrics(summary.metrics || {});
@@ -330,9 +492,18 @@ function renderSummary() {
   if (isAdmin) {
     renderMembers();
     renderInvites();
+    renderFeedback();
     renderAudit();
   }
   document.getElementById("teamFreshness").textContent = formatDateTime(summary.generatedAt);
+  const requestedTab = new URLSearchParams(location.search).get("tab");
+  const visibleTab = document.querySelector(`[data-team-tab="${CSS.escape(requestedTab || "")}"]:not([hidden])`);
+  if (visibleTab) visibleTab.click();
+  const reason = new URLSearchParams(location.search).get("reason");
+  if (reason === "module") {
+    showToast(`当前账号仅可填写：${summary.currentUser.moduleAccess.map((id) => professionalModuleLabels[id]).join("、") || "无填写权限"}`);
+    history.replaceState({}, "", `./team.html${requestedTab ? `?tab=${encodeURIComponent(requestedTab)}` : ""}`);
+  }
 }
 
 async function loadSummary({ quiet = false } = {}) {
@@ -361,7 +532,16 @@ function renderRecordDetail(row) {
   const analysis = row.analysis || {};
   const domains = Object.values(analysis.domainScores || {}).sort((a, b) => Number(a.score) - Number(b.score));
   const versions = row.versions || [];
-  document.getElementById("teamRecordDialogTitle").textContent = `${row.student_name || row.student_code} · 感觉统合功能评估`;
+  const assessorRows = Object.entries(professionalModuleLabels).map(([id, label]) => {
+    const assessor = record.professionalAssessors?.[id] || {};
+    const readiness = analysis.moduleReadiness?.[id] || {};
+    const contributors = Array.from(new Set([...(assessor.contributors || []), assessor.evaluator].filter(Boolean)));
+    return `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(assessor.evaluator ? `最近：${assessor.evaluator}` : "待分配")}</strong><small>${contributors.length ? `参与：${escapeHtml(contributors.join("、"))} · ` : ""}${escapeHtml(assessor.assessmentDate || "未填写日期")} · ${Number(readiness.validDomainCount) || 0}/${Number(readiness.totalDomainCount) || 0}个有效领域 · ${readiness.ready ? "可用于分流" : "待补评"}</small></div>`;
+  }).join("");
+  const courseLines = Array.isArray(analysis.courseRecommendations)
+    ? analysis.courseRecommendations.map((item) => `${item.priorityLabel || "建议"}：${item.title}。${item.rationale || ""}建议聚焦：${item.focus || "待团队确认"}。`)
+    : [];
+  document.getElementById("teamRecordDialogTitle").textContent = `${row.student_name || row.student_code} · 学生功能评估与康复支持`;
   document.getElementById("teamRecordDetail").innerHTML = `
     <div class="team-record-meta">
       <div><span>学生姓名</span><strong>${escapeHtml(row.student_name || "—")}</strong></div>
@@ -373,14 +553,16 @@ function renderRecordDetail(row) {
       <div><span>性别</span><strong>${escapeHtml(record.gender || "—")}</strong></div>
       <div><span>主要发展需要</span><strong>${escapeHtml(record.primaryNeed || "—")}</strong></div>
       <div><span>评估日期</span><strong>${escapeHtml(record.assessmentDate || "—")}</strong></div>
-      <div><span>综合分</span><strong>${analysis.average == null ? "—" : Number(analysis.average).toFixed(1)}</strong></div>
+      <div><span>功能观察均分</span><strong>${analysis.average == null ? "—" : Number(analysis.average).toFixed(1)}</strong></div>
       <div><span>完成度</span><strong>${Number(analysis.coverage) || 0}%</strong></div>
       <div><span>当前版本</span><strong>v${Number(row.version) || 1}</strong></div>
     </div>
+    <section class="detail-section"><h3>多专业评估分工</h3><div class="detail-domain-grid">${assessorRows}</div></section>
     <section class="detail-section"><h3>综合评估结果</h3><p>${escapeHtml(analysis.summary || "资料不足，尚未形成综合分析。")}</p></section>
     <section class="detail-section"><h3>领域表现</h3><div class="detail-domain-grid">${domains.length ? domains.map((domain) => `<div><span>${escapeHtml(domain.title)}</span><strong>${Number(domain.score).toFixed(1)}</strong></div>`).join("") : "暂无领域数据"}</div></section>
     ${detailList("相对优势", analysis.strengths)}
     ${detailList("优先支持需要", analysis.needs)}
+    ${detailList("个训课分流建议", courseLines.length ? courseLines : analysis.courseRecommendationNotes)}
     ${detailList("阶段康复目标", analysis.goals)}
     ${detailList("干预与环境支持建议", analysis.strategies)}
     ${detailList("安全与解释提醒", analysis.alerts)}
@@ -412,7 +594,7 @@ async function startRosterAssessment(studentId) {
       };
     }
     sessionStorage.setItem(TEAM_RECORD_TRANSFER_KEY, JSON.stringify(record));
-    location.href = "./index.html?source=team&new=1";
+    location.href = `${currentAssessmentRoute()}?source=team&new=1`;
   } catch (error) {
     showToast(error.message);
   }
@@ -443,7 +625,8 @@ async function exportCurrentDocx() {
   button.disabled = true;
   button.textContent = "正在生成…";
   try {
-    const doc = buildAssessmentReportDocument(currentRecord, window.docx);
+    const fontData = await loadReportFontData();
+    const doc = buildAssessmentReportDocument(currentRecord, window.docx, fontData);
     const blob = await window.docx.Packer.toBlob(doc);
     downloadBlob(blob, assessmentReportFilename(currentRecord));
     showToast("DOCX评估报告已生成");
@@ -469,19 +652,84 @@ function openRecordInAssessment() {
     medicalPrecautions: ""
   };
   sessionStorage.setItem(TEAM_RECORD_TRANSFER_KEY, JSON.stringify(record));
-  location.href = "./index.html?source=team";
+  location.href = `${currentAssessmentRoute()}?source=team`;
 }
 
 async function deleteCurrentRecord() {
-  if (!currentRecord || !confirm(`确认将 ${currentRecord.student_code} 移入已删除记录？历史版本与审计记录仍会保留。`)) return;
+  if (!currentRecord || !confirm(`确认将 ${currentRecord.student_name || currentRecord.student_code} 的评估报告移入回收站？30天内可以恢复。`)) return;
   try {
     await api(`/api/team/records/${encodeURIComponent(currentRecord.id)}`, { method: "DELETE" });
     teamRecordDialog.close();
     currentRecord = null;
     await loadSummary({ quiet: true });
-    showToast("团队档案已移入已删除记录");
+    showToast("评估报告已移入回收站，可在30天内恢复");
   } catch (error) {
     showToast(error.message);
+  }
+}
+
+async function deleteRecordFromTable(id, label) {
+  if (!confirm(`确认将 ${label} 的评估报告移入回收站？30天内可以恢复。`)) return;
+  try {
+    await api(`/api/team/records/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await loadSummary({ quiet: true });
+    showToast("评估报告已移入回收站");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function renderTeamTrash(rows) {
+  const body = document.getElementById("teamTrashTableBody");
+  document.getElementById("teamTrashEmpty").hidden = rows.length > 0;
+  body.innerHTML = rows.map((record) => `
+    <tr>
+      <td class="student-name-cell"><strong>${escapeHtml(record.student_label || record.student_code || "未命名")}</strong>${record.student_code && record.student_code !== record.student_label ? `<small>${escapeHtml(record.student_code)}</small>` : ""}</td>
+      <td>${escapeHtml(record.class_name || "—")}</td>
+      <td>${escapeHtml(record.assessment_date || "—")}</td>
+      <td>${escapeHtml(formatDateTime(record.deleted_at))}</td>
+      <td>${escapeHtml(record.deleted_by_name || "备用管理密钥")}</td>
+      <td><span class="retention-badge ${Number(record.days_remaining) <= 3 ? "urgent" : ""}">${Number(record.days_remaining) > 0 ? `${Number(record.days_remaining)}天` : "今天到期"}</span></td>
+      <td><div class="table-action-group"><button class="table-action" type="button" data-team-trash-action="restore" data-team-trash-id="${escapeHtml(record.id)}">恢复</button><button class="table-action danger" type="button" data-team-trash-action="purge" data-team-trash-id="${escapeHtml(record.id)}" data-team-trash-label="${escapeHtml(record.student_label || record.student_code || "该评估报告")}">永久删除</button></div></td>
+    </tr>
+  `).join("");
+}
+
+async function refreshTeamTrash() {
+  const data = await api("/api/admin/trash");
+  renderTeamTrash(data.records || []);
+  document.getElementById("teamTrashCount").textContent = String((data.records || []).length);
+}
+
+async function openTeamTrash() {
+  document.getElementById("teamTrashTableBody").innerHTML = '<tr><td colspan="7">正在读取回收站…</td></tr>';
+  document.getElementById("teamTrashEmpty").hidden = true;
+  teamTrashDialog.showModal();
+  try {
+    await refreshTeamTrash();
+  } catch (error) {
+    document.getElementById("teamTrashTableBody").innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+async function handleTeamTrashAction(button) {
+  const id = button.dataset.teamTrashId;
+  const action = button.dataset.teamTrashAction;
+  if (!id) return;
+  if (action === "purge" && !confirm(`确定永久删除“${button.dataset.teamTrashLabel || "该评估报告"}”吗？删除后无法恢复。`)) return;
+  button.disabled = true;
+  try {
+    if (action === "restore") {
+      await api(`/api/admin/trash/${encodeURIComponent(id)}/restore`, { method: "POST", body: "{}" });
+      showToast("评估报告已恢复到正式档案");
+    } else {
+      await api(`/api/admin/trash/${encodeURIComponent(id)}`, { method: "DELETE" });
+      showToast("测试报告已永久删除");
+    }
+    await Promise.all([refreshTeamTrash(), loadSummary({ quiet: true })]);
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
   }
 }
 
@@ -563,9 +811,12 @@ function renderProfileInsights(latestAssessment) {
     ...(Array.isArray(analysis.strengths) ? analysis.strengths.slice(0, 2).map((item) => `优势：${item}`) : []),
     ...(Array.isArray(analysis.needs) ? analysis.needs.slice(0, 3).map((item) => `需要：${item}`) : [])
   ];
+  const courseItems = Array.isArray(analysis.courseRecommendations)
+    ? analysis.courseRecommendations.map((item) => `个训建议：${item.priorityLabel || "建议"} ${item.title}`)
+    : [];
   const strategies = Array.isArray(analysis.strategies) ? analysis.strategies.slice(0, 4) : [];
   document.getElementById("profileAnalysisSummary").textContent = analysis.summary || "尚无有效摘要，建议先完成多情境功能性观察。";
-  document.getElementById("profilePriorityNeeds").innerHTML = (priorityItems.length ? priorityItems : ["尚未形成优势与优先需要分析"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  document.getElementById("profilePriorityNeeds").innerHTML = ([...courseItems, ...priorityItems].length ? [...courseItems, ...priorityItems] : ["尚未形成优势与优先需要分析"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   document.getElementById("profileStrategyList").innerHTML = (strategies.length ? strategies : ["尚未形成干预建议"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
 
@@ -600,7 +851,7 @@ function renderProfileInterventions() {
 function renderProfileAssessments() {
   const points = [...(currentProfile?.assessmentPoints || [])].reverse();
   document.getElementById("profileAssessmentTimeline").innerHTML = points.length
-    ? points.map((point) => `<article class="assessment-timeline-item"><div><strong>${escapeHtml(point.assessmentDate)}</strong><span>${escapeHtml(formatDateTime(point.createdAt))}</span></div><div><strong>${point.score == null ? "尚无综合分" : `${Number(point.score).toFixed(1)}分`}</strong><span>完成度 ${Number(point.coverage) || 0}% · v${Number(point.version) || 1} · ${escapeHtml(point.changedByName || "团队成员")}</span></div><button class="table-action" type="button" data-profile-record-id="${escapeHtml(point.assessmentId)}">查看评估</button></article>`).join("")
+    ? points.map((point) => `<article class="assessment-timeline-item"><div><strong>${escapeHtml(point.assessmentDate)}</strong><span>${escapeHtml(formatDateTime(point.createdAt))}</span></div><div><strong>${point.score == null ? "尚无功能观察均分" : `${Number(point.score).toFixed(1)}分`}</strong><span>完成度 ${Number(point.coverage) || 0}% · v${Number(point.version) || 1} · ${escapeHtml(point.changedByName || "团队成员")}</span></div><button class="table-action" type="button" data-profile-record-id="${escapeHtml(point.assessmentId)}">查看评估</button></article>`).join("")
     : '<div class="team-empty">尚无评估历史</div>';
 }
 
@@ -704,7 +955,8 @@ async function exportProgressDocx() {
   button.disabled = true;
   button.textContent = "正在生成…";
   try {
-    const doc = buildStudentProgressDocument(currentProfile, window.docx);
+    const fontData = await loadReportFontData();
+    const doc = buildStudentProgressDocument(currentProfile, window.docx, fontData);
     const blob = await window.docx.Packer.toBlob(doc);
     downloadBlob(blob, studentProgressFilename(currentProfile));
     showToast("阶段康复档案已生成");
@@ -990,15 +1242,19 @@ document.getElementById("backToLoginBtn").addEventListener("click", () => {
   showLogin();
 });
 
-document.getElementById("teamLogoutBtn").addEventListener("click", async () => {
+async function logoutTeam() {
   try { await api("/api/team/logout", { method: "POST", body: "{}" }); } catch { /* Cookie is cleared when possible. */ }
   summary = null;
+  sessionUser = null;
+  closeTeamDrawer();
   showLogin();
   showToast("已退出团队工作台");
-});
+}
+
+document.getElementById("teamLogoutBtn").addEventListener("click", logoutTeam);
 
 document.getElementById("refreshTeamBtn").addEventListener("click", () => loadSummary());
-document.getElementById("newAssessmentBtn").addEventListener("click", () => { location.href = "./index.html?source=team&new=1"; });
+document.getElementById("newAssessmentBtn").addEventListener("click", () => { location.href = `${currentAssessmentRoute()}?source=team&new=1`; });
 recordSearch.addEventListener("input", renderRecords);
 rosterSearch.addEventListener("input", renderRoster);
 rosterClassFilter.addEventListener("change", renderRoster);
@@ -1017,15 +1273,27 @@ rosterTableBody.addEventListener("click", (event) => {
   if (recordButton) openRecord(recordButton.dataset.teamRecordId);
 });
 recordTableBody.addEventListener("click", (event) => {
+  const deleteButton = event.target.closest("[data-team-record-delete-id]");
+  if (deleteButton) {
+    deleteRecordFromTable(deleteButton.dataset.teamRecordDeleteId, deleteButton.dataset.teamRecordLabel || "该学生");
+    return;
+  }
   const button = event.target.closest("[data-team-record-id]");
   if (button) openRecord(button.dataset.teamRecordId);
 });
 
-document.getElementById("teamTabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-team-tab]");
-  if (!button) return;
+function activateTeamTab(tabName, { updateUrl = false } = {}) {
+  const button = document.querySelector(`[data-team-tab="${CSS.escape(tabName)}"]:not([hidden])`);
+  if (!button) return false;
   document.querySelectorAll("[data-team-tab]").forEach((tab) => tab.classList.toggle("active", tab === button));
   document.querySelectorAll("[data-team-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.teamPanel === button.dataset.teamTab));
+  if (updateUrl) history.replaceState({}, "", `./team.html?tab=${encodeURIComponent(button.dataset.teamTab)}`);
+  return true;
+}
+
+document.getElementById("teamTabs").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-team-tab]");
+  if (button) activateTeamTab(button.dataset.teamTab, { updateUrl: true });
 });
 
 document.getElementById("inviteForm").addEventListener("submit", async (event) => {
@@ -1058,16 +1326,34 @@ document.getElementById("copyInviteBtn").addEventListener("click", () => {
 });
 
 document.getElementById("memberTableBody").addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-save-member]");
+  const button = event.target.closest("[data-save-member], [data-reset-member-password]");
   if (!button) return;
   const row = button.closest("[data-member-id]");
+  if (button.hasAttribute("data-reset-member-password")) {
+    const name = row.querySelector("strong")?.textContent?.replace("（当前账号）", "") || "该成员";
+    if (!confirm(`确认重置 ${name} 的密码？该成员现有登录会话会立即退出。`)) return;
+    button.disabled = true;
+    try {
+      const result = await api(`/api/team/members/${encodeURIComponent(row.dataset.memberId)}/reset-password`, { method: "POST", body: "{}" });
+      document.getElementById("resetMemberName").textContent = result.displayName;
+      document.getElementById("resetMemberEmail").value = result.email;
+      document.getElementById("resetTemporaryPassword").value = result.temporaryPassword;
+      passwordResetDialog.showModal();
+      await loadSummary({ quiet: true });
+    } catch (error) {
+      showToast(error.message);
+      button.disabled = false;
+    }
+    return;
+  }
   button.disabled = true;
   try {
     await api(`/api/team/members/${encodeURIComponent(row.dataset.memberId)}`, {
       method: "POST",
       body: JSON.stringify({
         role: row.querySelector("[data-member-role]").value,
-        status: row.querySelector("[data-member-status]").value
+        status: row.querySelector("[data-member-status]").value,
+        primaryModule: row.querySelector("[data-member-module]").value
       })
     });
     await loadSummary({ quiet: true });
@@ -1078,7 +1364,91 @@ document.getElementById("memberTableBody").addEventListener("click", async (even
   }
 });
 
+document.getElementById("memberTableBody").addEventListener("change", (event) => {
+  const roleSelect = event.target.closest("[data-member-role]");
+  if (!roleSelect) return;
+  const moduleSelect = roleSelect.closest("tr").querySelector("[data-member-module]");
+  moduleSelect.disabled = roleSelect.value !== "evaluator";
+  moduleSelect.innerHTML = moduleOptions(roleSelect.value === "evaluator" ? "si" : "all", roleSelect.value);
+});
+
+document.getElementById("feedbackAdminList").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-feedback-id]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    await api(`/api/team/feedback/${encodeURIComponent(button.dataset.feedbackId)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status: button.dataset.feedbackStatus })
+    });
+    await loadSummary({ quiet: true });
+    showToast("反馈状态已更新");
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+});
+
 document.getElementById("accountBtn").addEventListener("click", () => accountDialog.showModal());
+document.getElementById("teamMenuBtn").addEventListener("click", () => document.body.classList.contains("drawer-open") ? closeTeamDrawer() : openTeamDrawer());
+document.getElementById("closeTeamDrawerBtn").addEventListener("click", closeTeamDrawer);
+document.getElementById("teamDrawerBackdrop").addEventListener("click", closeTeamDrawer);
+document.getElementById("teamDrawerLogoutBtn").addEventListener("click", logoutTeam);
+teamDrawer.addEventListener("click", (event) => {
+  const lockedLink = event.target.closest("a.locked");
+  if (lockedLink) {
+    event.preventDefault();
+    showToast(sessionUser ? "当前账号未获授权填写该专业模块" : "请先登录团队账号");
+    return;
+  }
+  const tab = event.target.closest("[data-team-drawer-tab]")?.dataset.teamDrawerTab;
+  if (tab) {
+    closeTeamDrawer();
+    if (!summary) showToast("请先登录团队账号");
+    else activateTeamTab(tab, { updateUrl: true });
+    return;
+  }
+  const action = event.target.closest("[data-team-drawer-action]")?.dataset.teamDrawerAction;
+  if (!action) return;
+  closeTeamDrawer();
+  if (action === "instructions") teamHelpDialog.showModal();
+  if (action === "feedback") {
+    if (!sessionUser) showToast("请先登录后提交反馈");
+    else {
+      teamFeedbackDialog.showModal();
+      document.getElementById("teamFeedbackContent").focus();
+    }
+  }
+  if (action === "account") accountDialog.showModal();
+});
+
+document.querySelectorAll(".close-team-help").forEach((button) => button.addEventListener("click", () => teamHelpDialog.close()));
+document.querySelectorAll(".close-team-feedback").forEach((button) => button.addEventListener("click", () => teamFeedbackDialog.close()));
+document.getElementById("teamFeedbackForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const errorBox = document.getElementById("teamFeedbackError");
+  const submit = event.submitter;
+  errorBox.textContent = "";
+  submit.disabled = true;
+  try {
+    await api("/api/team/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        category: document.getElementById("teamFeedbackCategory").value,
+        content: document.getElementById("teamFeedbackContent").value,
+        pagePath: location.pathname
+      })
+    });
+    event.target.reset();
+    teamFeedbackDialog.close();
+    showToast("反馈已提交，感谢你的建议");
+    if (summary?.currentUser?.role === "admin") await loadSummary({ quiet: true });
+  } catch (error) {
+    errorBox.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+});
 document.querySelectorAll(".close-account-dialog").forEach((button) => button.addEventListener("click", () => accountDialog.close()));
 document.getElementById("passwordForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1109,13 +1479,57 @@ document.getElementById("passwordForm").addEventListener("submit", async (event)
   }
 });
 
+document.getElementById("forcedPasswordForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const errorBox = document.getElementById("forcedPasswordError");
+  const newPassword = document.getElementById("forcedNewPassword").value;
+  if (newPassword !== document.getElementById("forcedNewPasswordConfirm").value) {
+    errorBox.textContent = "两次输入的新密码不一致";
+    return;
+  }
+  const submit = event.submitter;
+  submit.disabled = true;
+  errorBox.textContent = "";
+  try {
+    await api("/api/team/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        currentPassword: document.getElementById("forcedCurrentPassword").value,
+        newPassword
+      })
+    });
+    event.target.reset();
+    showToast("密码已更新，正在进入团队空间");
+    await loadSession();
+  } catch (error) {
+    errorBox.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+document.querySelectorAll(".close-password-reset").forEach((button) => button.addEventListener("click", () => passwordResetDialog.close()));
+document.getElementById("copyResetCredentialsBtn").addEventListener("click", () => {
+  const email = document.getElementById("resetMemberEmail").value;
+  const password = document.getElementById("resetTemporaryPassword").value;
+  copyText(`登录网址：${PRODUCTION_ORIGIN}/team.html\n登录邮箱：${email}\n临时密码：${password}\n首次登录后请立即修改密码。`, "账号和临时密码已复制");
+});
+
 document.querySelectorAll(".close-team-record").forEach((button) => button.addEventListener("click", () => teamRecordDialog.close()));
+document.getElementById("openTeamTrashBtn").addEventListener("click", openTeamTrash);
+document.getElementById("teamTrashTableBody").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-team-trash-action]");
+  if (button) handleTeamTrashAction(button);
+});
+document.querySelectorAll(".close-team-trash").forEach((button) => button.addEventListener("click", () => teamTrashDialog.close()));
 document.getElementById("exportTeamDocxBtn").addEventListener("click", exportCurrentDocx);
 document.getElementById("openInAssessmentBtn").addEventListener("click", openRecordInAssessment);
 document.getElementById("deleteTeamRecordBtn").addEventListener("click", deleteCurrentRecord);
 
-[teamRecordDialog, accountDialog, studentProfileDialog, studentFormDialog, goalDialog, interventionDialog].forEach((dialog) => dialog.addEventListener("click", (event) => {
+[teamRecordDialog, teamTrashDialog, accountDialog, passwordResetDialog, studentProfileDialog, studentFormDialog, goalDialog, interventionDialog, teamHelpDialog, teamFeedbackDialog].forEach((dialog) => dialog.addEventListener("click", (event) => {
   if (event.target === dialog) dialog.close();
 }));
 
 loadSession();
+sendAnalytics("visit");
+setInterval(() => sendAnalytics("heartbeat"), 45_000);

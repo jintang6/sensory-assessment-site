@@ -39,7 +39,7 @@ async function loadReport() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "报告链接不存在或已过期");
 
-    filename.textContent = data.filename || "感觉统合功能评估报告.docx";
+    filename.textContent = data.filename || "学生功能评估与康复支持报告.docx";
     expiry.textContent = expiryText(data.expiresAt);
     downloadButton.href = `/api/reports/shared/${token}/download`;
     downloadButton.hidden = false;

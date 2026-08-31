@@ -1,13 +1,16 @@
 import { getAuth } from "../_lib/auth.js";
+import { hashPassword } from "better-auth/crypto";
 
 const MAX_BODY_BYTES = 180_000;
 const MAX_REPORT_BODY_BYTES = 850_000;
 const MAX_REPORT_BYTES = 600_000;
-const DOMAIN_LIMIT = 16;
+const DOMAIN_LIMIT = 64;
 const ITEM_LIMIT = 10;
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const REPORT_TOKEN_PATTERN = /^[a-f0-9]{48}$/;
 const REPORT_SHARE_TTL_MS = 24 * 60 * 60 * 1000;
+const TRASH_RETENTION_DAYS = 30;
+const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 const INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const INVITE_CODE_PATTERN = /^KFB[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/;
@@ -18,6 +21,9 @@ const GOAL_STATUSES = new Set(["active", "achieved", "paused", "archived"]);
 const INTERVENTION_SETTINGS = new Set(["classroom", "therapy", "daily_living", "home", "community"]);
 const OBSERVER_TYPES = new Set(["therapist", "teacher", "family", "multidisciplinary"]);
 const RESPONSE_LEVELS = new Set(["limited", "emerging", "stable", "generalized"]);
+const PROFESSIONAL_MODULE_IDS = ["si", "ot", "st", "pt"];
+const PROFESSIONAL_MODULE_SET = new Set(PROFESSIONAL_MODULE_IDS);
+const FEEDBACK_CATEGORIES = new Set(["suggestion", "content", "bug", "workflow", "other"]);
 let teamRosterSchemaReady = false;
 let teamCareSchemaReady = false;
 
@@ -147,7 +153,7 @@ function cleanReportFilename(value) {
     .replace(/[\\/:*?"<>|]/g, "_")
     .trim()
     .slice(0, 120);
-  if (!filename) filename = "感觉统合功能评估报告.docx";
+  if (!filename) filename = "学生功能评估与康复支持报告.docx";
   if (!filename.toLowerCase().endsWith(".docx")) filename += ".docx";
   return filename;
 }
@@ -266,6 +272,18 @@ function normalizeRecord(rawRecord, deidentified) {
   const studentCode = cleanString(raw.studentCode, 60);
   const identityValues = [studentName, raw.className, raw.organizationName, raw.evaluator, raw.reviewer];
   const domains = {};
+  const professionalAssessors = {};
+
+  PROFESSIONAL_MODULE_IDS.forEach((moduleId) => {
+    const assessor = raw.professionalAssessors?.[moduleId];
+    if (!assessor || typeof assessor !== "object") return;
+    professionalAssessors[moduleId] = {
+      evaluator: cleanString(assessor.evaluator, 80),
+      assessmentDate: cleanDate(assessor.assessmentDate),
+      contributors: cleanArray(assessor.contributors, 12, 80),
+      lastUpdatedAt: cleanString(assessor.lastUpdatedAt, 40)
+    };
+  });
 
   Object.entries(raw.domains || {}).slice(0, DOMAIN_LIMIT).forEach(([domainId, domain]) => {
     const safeDomainId = cleanString(domainId, 50);
@@ -276,6 +294,7 @@ function normalizeRecord(rawRecord, deidentified) {
       if (safeItemId) items[safeItemId] = cleanScore(score);
     });
     domains[safeDomainId] = {
+      professional: PROFESSIONAL_MODULE_IDS.includes(cleanString(domain.professional, 10)) ? cleanString(domain.professional, 10) : "",
       items,
       impact: cleanImpact(domain.impact),
       support: cleanString(domain.support, 60),
@@ -302,6 +321,7 @@ function normalizeRecord(rawRecord, deidentified) {
     observationSources: cleanArray(raw.observationSources, 8, 80),
     background: deidentified ? "" : cleanString(raw.background, 1500),
     medicalPrecautions: deidentified ? "" : cleanString(raw.medicalPrecautions, 1000),
+    professionalAssessors,
     domains,
     updatedAt: new Date().toISOString()
   };
@@ -322,11 +342,41 @@ function normalizeAnalysis(rawAnalysis, identityValues = []) {
     if (!safeId || !Number.isFinite(score)) return;
     domainScores[safeId] = {
       title: cleanString(item.title, 100),
+      professional: PROFESSIONAL_MODULE_IDS.includes(cleanString(item.professional, 10)) ? cleanString(item.professional, 10) : "",
       score: Math.max(1, Math.min(5, Number(score.toFixed(2)))),
       impact: cleanImpact(item.impact),
       answered: Math.max(0, Math.min(ITEM_LIMIT, Number(item.answered) || 0)),
       support: cleanString(item.support, 60),
       priority: Number.isFinite(Number(item.priority)) ? Math.max(0, Math.min(20, Number(Number(item.priority).toFixed(2)))) : null
+    };
+  });
+
+  const courseRecommendations = Array.isArray(raw.courseRecommendations)
+    ? raw.courseRecommendations.slice(0, 2).map((item) => ({
+        courseId: cleanString(item?.courseId, 20),
+        title: cleanAnalysisString(item?.title, 100),
+        rank: Math.max(1, Math.min(2, Number(item?.rank) || 1)),
+        priorityLabel: cleanAnalysisString(item?.priorityLabel, 30),
+        needIndex: Number.isFinite(Number(item?.needIndex)) ? Math.max(0, Math.min(20, Number(Number(item.needIndex).toFixed(2)))) : null,
+        rationale: cleanAnalysisString(item?.rationale, 500),
+        focus: cleanAnalysisString(item?.focus, 300),
+        decisionNote: cleanAnalysisString(item?.decisionNote, 400)
+      })).filter((item) => item.courseId && item.title)
+    : [];
+  const moduleReadiness = {};
+  PROFESSIONAL_MODULE_IDS.forEach((moduleId) => {
+    const item = raw.moduleReadiness?.[moduleId];
+    if (!item || typeof item !== "object") return;
+    moduleReadiness[moduleId] = {
+      label: cleanString(item.label, 60),
+      validDomainCount: Math.max(0, Math.min(DOMAIN_LIMIT, Number(item.validDomainCount) || 0)),
+      totalDomainCount: Math.max(0, Math.min(DOMAIN_LIMIT, Number(item.totalDomainCount) || 0)),
+      answeredItems: Math.max(0, Math.min(DOMAIN_LIMIT * ITEM_LIMIT, Number(item.answeredItems) || 0)),
+      totalItems: Math.max(0, Math.min(DOMAIN_LIMIT * ITEM_LIMIT, Number(item.totalItems) || 0)),
+      coverage: Math.max(0, Math.min(100, Number(item.coverage) || 0)),
+      ready: item.ready === true,
+      evaluator: cleanString(item.evaluator, 80),
+      assessmentDate: cleanDate(item.assessmentDate)
     };
   });
 
@@ -344,6 +394,9 @@ function normalizeAnalysis(rawAnalysis, identityValues = []) {
     needs: cleanAnalysisArray(raw.needs, 10, 700),
     goals: cleanAnalysisArray(raw.goals, 10, 800),
     strategies: cleanAnalysisArray(raw.strategies, 12, 800),
+    courseRecommendations,
+    courseRecommendationNotes: cleanAnalysisArray(raw.courseRecommendationNotes, 6, 500),
+    moduleReadiness,
     domainScores
   };
 }
@@ -370,9 +423,59 @@ async function isAdmin(request, env) {
 }
 
 async function requireAdmin(request, env) {
-  if (!env.ADMIN_TOKEN) return json(request, env, { error: "后台尚未配置管理密钥" }, 503);
-  if (!(await isAdmin(request, env))) return json(request, env, { error: "管理密钥无效" }, 401);
-  return null;
+  if (env.ADMIN_TOKEN && await isAdmin(request, env)) return null;
+  try {
+    const auth = getAuth(request, env);
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (session?.user?.id) {
+      const member = await env.DB.prepare(`
+        SELECT role, status, password_change_required
+        FROM team_members WHERE user_id = ?
+      `).bind(session.user.id).first();
+      if (member?.status === "active" && member.role === "admin" && Number(member.password_change_required) !== 1) return null;
+    }
+  } catch {
+    // The management key remains available for bootstrap and recovery.
+  }
+  return json(request, env, { error: "请使用部门管理员账号登录，或输入有效管理密钥" }, 401);
+}
+
+function superAdminEmailHashes(env) {
+  return String(env.SUPER_ADMIN_EMAIL_HASHES || "")
+    .split(",")
+    .map((hash) => cleanString(hash, 64).toLowerCase())
+    .filter((hash) => /^[a-f0-9]{64}$/.test(hash))
+    .filter(Boolean);
+}
+
+async function isSuperAdminMember(member, env) {
+  if (member?.status !== "active"
+    || member.role !== "admin"
+    || Number(member.password_change_required) === 1) return false;
+  const emailHash = await sha256Hex(normalizeEmail(member.email));
+  return superAdminEmailHashes(env).includes(emailHash);
+}
+
+async function requireSuperAdmin(request, env) {
+  if (env.ADMIN_TOKEN && await isAdmin(request, env)) return null;
+  let signedIn = false;
+  try {
+    const auth = getAuth(request, env);
+    const session = await auth.api.getSession({ headers: request.headers });
+    signedIn = Boolean(session?.user?.id);
+    if (session?.user?.id) {
+      const member = await env.DB.prepare(`
+        SELECT email, role, status, password_change_required
+        FROM team_members WHERE user_id = ?
+      `).bind(session.user.id).first();
+      if (await isSuperAdminMember(member, env)) return null;
+    }
+  } catch {
+    // The management key remains available for bootstrap and recovery.
+  }
+  return json(request, env, {
+    error: signedIn ? "仅超级管理员可以进入运营与数据后台" : "请使用超级管理员账号登录，或输入有效管理密钥"
+  }, signedIn ? 403 : 401);
 }
 
 async function sha256Hex(value) {
@@ -415,18 +518,34 @@ function roleLabel(role) {
   return { admin: "部门管理员", evaluator: "评估成员", viewer: "只读成员" }[role] || role;
 }
 
-async function teamIdentity(request, env) {
+function moduleLabel(moduleId) {
+  return { all: "全专业", si: "感觉统合 SI", ot: "作业治疗 OT", st: "言语语言 ST", pt: "运动功能 PT" }[moduleId] || "未分组";
+}
+
+function memberModules(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => PROFESSIONAL_MODULE_SET.has(item));
+}
+
+async function teamIdentity(request, env, { allowPasswordChange = false } = {}) {
   const auth = getAuth(request, env);
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user?.id) return { auth, denied: json(request, env, { error: "请先登录团队工作台" }, 401) };
 
   const member = await env.DB.prepare(`
-    SELECT user_id, email, display_name, role, status, created_at, last_active_at
+    SELECT user_id, email, display_name, role, status, primary_module, module_access,
+           assignment_note, password_change_required, password_changed_at,
+           password_reset_at, created_at, last_active_at
     FROM team_members
     WHERE user_id = ?
   `).bind(session.user.id).first();
   if (!member || member.status !== "active") {
     return { auth, denied: json(request, env, { error: "账号未加入本部门或已停用" }, 403) };
+  }
+  if (!allowPasswordChange && Number(member.password_change_required) === 1) {
+    return { auth, session, member, denied: json(request, env, { error: "首次登录必须先修改初始密码", passwordChangeRequired: true }, 428) };
   }
 
   if (!member.last_active_at || Date.now() - new Date(`${member.last_active_at.replace(" ", "T")}Z`).getTime() > 5 * 60 * 1000) {
@@ -448,6 +567,74 @@ function auditStatement(env, userId, action, targetType, targetId = null, metada
     INSERT INTO team_audit_logs (user_id, action, target_type, target_id, metadata_json, created_at)
     VALUES (?, ?, ?, ?, ?, datetime('now'))
   `).bind(userId || null, action, targetType, targetId || null, JSON.stringify(metadata));
+}
+
+function sqliteTimestamp(value) {
+  const text = cleanString(value, 40);
+  if (!text) return null;
+  const date = new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function trashRetention(record) {
+  const deletedAt = sqliteTimestamp(record.deleted_at);
+  const expiresAt = deletedAt ? new Date(deletedAt.getTime() + TRASH_RETENTION_MS) : null;
+  return {
+    ...record,
+    expires_at: expiresAt?.toISOString() || "",
+    days_remaining: expiresAt ? Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)) : 0
+  };
+}
+
+async function purgeExpiredAssessments(env) {
+  const expired = await env.DB.prepare(`
+    SELECT COUNT(*) AS count
+    FROM team_assessments
+    WHERE deleted_at IS NOT NULL AND datetime(deleted_at) <= datetime('now', '-${TRASH_RETENTION_DAYS} days')
+  `).first();
+  if (!Number(expired?.count || 0)) return 0;
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      DELETE FROM team_assessment_versions
+      WHERE assessment_id IN (
+        SELECT id FROM team_assessments
+        WHERE deleted_at IS NOT NULL AND datetime(deleted_at) <= datetime('now', '-${TRASH_RETENTION_DAYS} days')
+      )
+    `),
+    env.DB.prepare(`
+      DELETE FROM team_assessments
+      WHERE deleted_at IS NOT NULL AND datetime(deleted_at) <= datetime('now', '-${TRASH_RETENTION_DAYS} days')
+    `)
+  ]);
+  const purged = Number(results[1]?.meta?.changes || 0);
+  if (purged) {
+    await auditStatement(env, null, "assessment.trash_expired", "assessment_batch", null, {
+      count: purged,
+      retentionDays: TRASH_RETENTION_DAYS
+    }).run();
+  }
+  return purged;
+}
+
+async function maintainAssessmentTrash(path, env) {
+  if (path.startsWith("/api/team/") || path.startsWith("/api/admin/")) {
+    await purgeExpiredAssessments(env);
+  }
+}
+
+async function signedInAdminUserId(request, env) {
+  try {
+    const auth = getAuth(request, env);
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session?.user?.id) return null;
+    const member = await env.DB.prepare(`
+      SELECT user_id FROM team_members
+      WHERE user_id = ? AND role = 'admin' AND status = 'active'
+    `).bind(session.user.id).first();
+    return member?.user_id || null;
+  } catch {
+    return null;
+  }
 }
 
 async function ensureTeamRosterSchema(env) {
@@ -682,8 +869,15 @@ async function handleTeamRegister(request, env) {
   try {
     const results = await env.DB.batch([
       env.DB.prepare(`
-        INSERT INTO team_members (user_id, email, display_name, role, status, created_at, last_active_at)
-        SELECT ?, ?, ?, role, 'active', datetime('now'), datetime('now')
+        INSERT INTO team_members (
+          user_id, email, display_name, role, status, primary_module, module_access,
+          assignment_note, created_at, last_active_at
+        )
+        SELECT ?, ?, ?, role, 'active',
+               CASE WHEN role = 'evaluator' THEN 'si' ELSE 'all' END,
+               CASE WHEN role = 'evaluator' THEN 'si' ELSE 'si,ot,st,pt' END,
+               CASE WHEN role = 'evaluator' THEN '新账号暂归感觉统合组，请管理员确认专业分组。' ELSE '' END,
+               datetime('now'), datetime('now')
         FROM team_invites
         WHERE id = ? AND reservation_id = ? AND used_at IS NULL AND revoked_at IS NULL
       `).bind(user.id, email, displayName, invite.id, reservationId),
@@ -864,7 +1058,7 @@ async function handleCreateTeamInvite(request, env) {
 }
 
 async function handleTeamSession(request, env) {
-  const identity = await teamIdentity(request, env);
+  const identity = await teamIdentity(request, env, { allowPasswordChange: true });
   if (identity.denied) return identity.denied;
   return json(request, env, {
     authenticated: true,
@@ -873,7 +1067,13 @@ async function handleTeamSession(request, env) {
       email: identity.member.email,
       displayName: identity.member.display_name,
       role: identity.member.role,
-      roleLabel: roleLabel(identity.member.role)
+      roleLabel: roleLabel(identity.member.role),
+      primaryModule: identity.member.primary_module,
+      primaryModuleLabel: moduleLabel(identity.member.primary_module),
+      moduleAccess: memberModules(identity.member.module_access),
+      assignmentNote: identity.member.assignment_note,
+      isSuperAdmin: await isSuperAdminMember(identity.member, env),
+      passwordChangeRequired: Number(identity.member.password_change_required) === 1
     },
     team: {
       name: cleanString(env.TEAM_NAME, 100) || "本校康复评估部门",
@@ -889,7 +1089,7 @@ async function handleTeamLogout(request, env) {
 }
 
 async function handleChangePassword(request, env) {
-  const identity = await teamIdentity(request, env);
+  const identity = await teamIdentity(request, env, { allowPasswordChange: true });
   if (identity.denied) return identity.denied;
   const body = await parseBody(request, 10_000);
   const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
@@ -903,8 +1103,73 @@ async function handleChangePassword(request, env) {
     revokeOtherSessions: true
   });
   if (!response.ok) return json(request, env, { error: "当前密码不正确或新密码不符合要求" }, 400);
-  await auditStatement(env, identity.member.user_id, "member.password_change", "member", identity.member.user_id).run();
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE team_members
+      SET password_change_required = 0, password_changed_at = datetime('now')
+      WHERE user_id = ?
+    `).bind(identity.member.user_id),
+    auditStatement(env, identity.member.user_id, "member.password_change", "member", identity.member.user_id)
+  ]);
   return withSecurityHeaders(request, env, response);
+}
+
+function temporaryPassword() {
+  const groups = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%"];
+  const randomCharacter = (alphabet) => alphabet[crypto.getRandomValues(new Uint8Array(1))[0] % alphabet.length];
+  const characters = groups.map(randomCharacter);
+  const alphabet = groups.join("");
+  while (characters.length < 18) characters.push(randomCharacter(alphabet));
+  for (let index = characters.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.getRandomValues(new Uint8Array(1))[0] % (index + 1);
+    [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+  }
+  return characters.join("");
+}
+
+async function handleResetTeamMemberPassword(request, env, userId) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin"]);
+  if (denied) return denied;
+  const targetId = cleanString(userId, 80);
+  if (targetId === identity.member.user_id) {
+    return json(request, env, { error: "请在账号设置中修改自己的密码" }, 400);
+  }
+  const target = await env.DB.prepare(`
+    SELECT user_id, email, display_name
+    FROM team_members
+    WHERE user_id = ?
+  `).bind(targetId).first();
+  if (!target) return json(request, env, { error: "未找到团队成员" }, 404);
+
+  const password = temporaryPassword();
+  const passwordHash = await hashPassword(password);
+  const passwordUpdate = env.DB.prepare(`
+    UPDATE account
+    SET password = ?, updatedAt = datetime('now')
+    WHERE userId = ? AND providerId = 'credential'
+  `).bind(passwordHash, targetId);
+  const results = await env.DB.batch([
+    passwordUpdate,
+    env.DB.prepare(`
+      UPDATE team_members
+      SET password_change_required = 1, password_reset_at = datetime('now')
+      WHERE user_id = ?
+    `).bind(targetId),
+    env.DB.prepare('DELETE FROM "session" WHERE "userId" = ?').bind(targetId),
+    auditStatement(env, identity.member.user_id, "member.password_reset", "member", targetId)
+  ]);
+  if (results[0]?.meta?.changes !== 1) {
+    return json(request, env, { error: "该账号没有可重置的密码凭据" }, 409);
+  }
+  return json(request, env, {
+    ok: true,
+    userId: targetId,
+    displayName: target.display_name,
+    email: target.email,
+    temporaryPassword: password,
+    passwordChangeRequired: true
+  });
 }
 
 async function handleTeamSummary(request, env) {
@@ -912,7 +1177,7 @@ async function handleTeamSummary(request, env) {
   if (identity.denied) return identity.denied;
   await ensureTeamCareSchema(env);
   const isTeamAdmin = identity.member.role === "admin";
-  const [metrics, studentResult, recordsResult, analysisResult, memberResult, inviteResult, auditResult] = await Promise.all([
+  const [metrics, studentResult, recordsResult, analysisResult, memberResult, inviteResult, auditResult, feedbackResult] = await Promise.all([
     env.DB.prepare(`
       SELECT
         (SELECT COUNT(*) FROM team_students WHERE status = 'active') AS total_students,
@@ -924,6 +1189,7 @@ async function handleTeamSummary(request, env) {
           )) AS assessed_students,
         (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL) AS total_records,
         (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL AND date(updated_at) = date('now')) AS today_updates,
+        (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NOT NULL) AS trash_records,
         (SELECT COUNT(*) FROM team_members WHERE status = 'active') AS active_members,
         (SELECT COUNT(*) FROM team_members WHERE status = 'active' AND last_active_at >= datetime('now', '-10 minutes')) AS online_members,
         (SELECT COUNT(*) FROM team_goals WHERE status = 'active') AS active_goals,
@@ -971,7 +1237,13 @@ async function handleTeamSummary(request, env) {
     `).all(),
     env.DB.prepare("SELECT analysis_json FROM team_assessments WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 500").all(),
     isTeamAdmin
-      ? env.DB.prepare("SELECT user_id, email, display_name, role, status, created_at, last_active_at FROM team_members ORDER BY status, created_at").all()
+      ? env.DB.prepare(`
+          SELECT user_id, email, display_name, role, status, primary_module, module_access,
+                 assignment_note, password_change_required, password_changed_at,
+                 password_reset_at, created_at, last_active_at
+          FROM team_members
+          ORDER BY status, primary_module, created_at
+        `).all()
       : Promise.resolve({ results: [] }),
     isTeamAdmin
       ? env.DB.prepare(`
@@ -983,6 +1255,17 @@ async function handleTeamSummary(request, env) {
       : Promise.resolve({ results: [] }),
     isTeamAdmin
       ? env.DB.prepare("SELECT id, user_id, action, target_type, target_id, metadata_json, created_at FROM team_audit_logs ORDER BY created_at DESC LIMIT 40").all()
+      : Promise.resolve({ results: [] }),
+    isTeamAdmin
+      ? env.DB.prepare(`
+          SELECT feedback.id, feedback.user_id, feedback.category, feedback.content,
+                 feedback.page_path, feedback.status, feedback.created_at,
+                 feedback.resolved_at, member.display_name AS author_name
+          FROM team_feedback feedback
+          LEFT JOIN team_members member ON member.user_id = feedback.user_id
+          ORDER BY CASE feedback.status WHEN 'open' THEN 0 ELSE 1 END, feedback.created_at DESC
+          LIMIT 200
+        `).all()
       : Promise.resolve({ results: [] })
   ]);
 
@@ -994,7 +1277,12 @@ async function handleTeamSummary(request, env) {
       email: identity.member.email,
       displayName: identity.member.display_name,
       role: identity.member.role,
-      roleLabel: roleLabel(identity.member.role)
+      roleLabel: roleLabel(identity.member.role),
+      primaryModule: identity.member.primary_module,
+      primaryModuleLabel: moduleLabel(identity.member.primary_module),
+      moduleAccess: memberModules(identity.member.module_access),
+      assignmentNote: identity.member.assignment_note,
+      isSuperAdmin: await isSuperAdminMember(identity.member, env)
     },
     metrics: metrics || {},
     students: studentResult.results || [],
@@ -1003,10 +1291,12 @@ async function handleTeamSummary(request, env) {
     members: memberResult.results || [],
     invites: (inviteResult.results || []).map((row) => ({ ...row, roleLabel: roleLabel(row.role) })),
     audit: (auditResult.results || []).map((row) => ({ ...row, metadata: parseJson(row.metadata_json), metadata_json: undefined })),
+    feedback: feedbackResult.results || [],
     privacy: {
       mode: "受限学生名单与去标识化评估分开保存",
       rosterFields: ["学生姓名", "班级", "内部协作编号"],
-      excluded: ["学籍号", "联系方式", "家庭住址", "评估人与复核人", "背景资料", "医疗注意事项"]
+      excluded: ["学籍号", "联系方式", "家庭住址", "报告统筹人与复核人", "背景资料", "医疗注意事项"],
+      teamOnly: ["专业模块主评人", "评估版本修改人"]
     }
   });
 }
@@ -1435,6 +1725,13 @@ async function handleTeamAssessment(request, env) {
   if (denied) return denied;
   const body = await parseBody(request);
   if (body.consent !== true) return json(request, env, { error: "请先确认已获得去标识化云协作授权" }, 400);
+  const activeModule = cleanString(body.module, 10);
+  if (!PROFESSIONAL_MODULE_SET.has(activeModule)) {
+    return json(request, env, { error: "缺少当前评估专业模块" }, 400);
+  }
+  if (identity.member.role !== "admin" && !memberModules(identity.member.module_access).includes(activeModule)) {
+    return json(request, env, { error: `当前账号未获授权填写${moduleLabel(activeModule)}` }, 403);
+  }
 
   const identityValues = [
     body.record?.studentName,
@@ -1450,22 +1747,69 @@ async function handleTeamAssessment(request, env) {
   if (!clientRecordId || !record.studentCode) {
     return json(request, env, { error: "协作编号须为同时包含字母和数字的内部编码，如 KFB-027" }, 400);
   }
-  if (Object.keys(record.domains).length < 3) return json(request, env, { error: "评估内容不足，至少完成3个领域" }, 400);
-
   const recent = await env.DB.prepare(`
     SELECT COUNT(*) AS count FROM team_audit_logs
     WHERE user_id = ? AND action = 'assessment.sync' AND created_at >= datetime('now', '-1 hour')
   `).bind(identity.member.user_id).first();
   if (Number(recent?.count || 0) >= 100) return json(request, env, { error: "同步过于频繁，请稍后再试" }, 429);
 
-  const existing = await env.DB.prepare(`
-    SELECT id, version, owner_user_id, deleted_at FROM team_assessments WHERE client_record_id = ?
+  let existing = await env.DB.prepare(`
+    SELECT id, client_record_id, version, owner_user_id, updated_by_user_id,
+           deleted_at, assessment_json, analysis_json
+    FROM team_assessments WHERE client_record_id = ?
   `).bind(clientRecordId).first();
+  if (!existing) {
+    existing = await env.DB.prepare(`
+      SELECT id, client_record_id, version, owner_user_id, updated_by_user_id,
+             deleted_at, assessment_json, analysis_json
+      FROM team_assessments
+      WHERE student_code = ? AND deleted_at IS NULL
+      ORDER BY datetime(updated_at) DESC
+      LIMIT 1
+    `).bind(record.studentCode).first();
+  }
   if (existing?.deleted_at) return json(request, env, { error: "该团队档案已被管理员删除，不能通过自动同步恢复" }, 409);
+  const existingRecord = parseJson(existing?.assessment_json, {});
+  const existingAnalysis = parseJson(existing?.analysis_json, {});
+  const previousAssessor = existingRecord.professionalAssessors?.[activeModule] || {};
+  const contributors = Array.from(new Set([
+    ...(Array.isArray(previousAssessor.contributors) ? previousAssessor.contributors : []),
+    previousAssessor.evaluator,
+    identity.member.display_name
+  ].map((value) => cleanString(value, 80)).filter(Boolean)));
+  const reviewRequired = Boolean(existing && previousAssessor.evaluator && previousAssessor.evaluator !== identity.member.display_name);
+  const moduleDomains = Object.fromEntries(Object.entries(record.domains)
+    .filter(([, domain]) => domain?.professional === activeModule));
+  const mergedRecord = {
+    ...existingRecord,
+    ...record,
+    professionalAssessors: {
+      ...(existingRecord.professionalAssessors || {}),
+      [activeModule]: {
+        evaluator: identity.member.display_name,
+        assessmentDate: record.assessmentDate,
+        contributors,
+        lastUpdatedAt: new Date().toISOString()
+      }
+    },
+    domains: { ...(existingRecord.domains || {}), ...moduleDomains }
+  };
+  const moduleDomainScores = Object.fromEntries(Object.entries(analysis.domainScores || {})
+    .filter(([, domain]) => domain?.professional === activeModule));
+  const mergedAnalysis = {
+    ...existingAnalysis,
+    ...analysis,
+    domainScores: { ...(existingAnalysis.domainScores || {}), ...moduleDomainScores },
+    moduleReadiness: {
+      ...(existingAnalysis.moduleReadiness || {}),
+      ...(analysis.moduleReadiness?.[activeModule] ? { [activeModule]: analysis.moduleReadiness[activeModule] } : {})
+    }
+  };
   const assessmentId = existing?.id || crypto.randomUUID();
+  const canonicalClientRecordId = existing?.client_record_id || clientRecordId;
   const version = Number(existing?.version || 0) + 1;
-  const assessmentJson = JSON.stringify(record);
-  const analysisJson = JSON.stringify(analysis);
+  const assessmentJson = JSON.stringify(mergedRecord);
+  const analysisJson = JSON.stringify(mergedAnalysis);
   const statements = [
     env.DB.prepare(`
       INSERT INTO team_assessments (
@@ -1489,7 +1833,7 @@ async function handleTeamAssessment(request, env) {
         deleted_at = NULL,
         deleted_by_user_id = NULL
     `).bind(
-      assessmentId, clientRecordId, record.studentCode, record.age, record.gender,
+      assessmentId, canonicalClientRecordId, record.studentCode, record.age, record.gender,
       record.primaryNeed, record.assessmentDate, analysis.average, analysis.coverage,
       assessmentJson, analysisJson, existing?.owner_user_id || identity.member.user_id,
       identity.member.user_id, version
@@ -1499,14 +1843,25 @@ async function handleTeamAssessment(request, env) {
         id, assessment_id, version, assessment_json, analysis_json, changed_by_user_id, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `).bind(crypto.randomUUID(), assessmentId, version, assessmentJson, analysisJson, identity.member.user_id),
-    auditStatement(env, identity.member.user_id, "assessment.sync", "assessment", assessmentId, { version })
+    auditStatement(env, identity.member.user_id, "assessment.sync", "assessment", assessmentId, {
+      version,
+      module: activeModule,
+      reviewRequired,
+      previousEvaluator: reviewRequired ? previousAssessor.evaluator : ""
+    })
   ];
   await env.DB.batch(statements);
   return json(request, env, {
     ok: true,
     assessmentId,
-    clientRecordId,
+    clientRecordId: canonicalClientRecordId,
     version,
+    module: activeModule,
+    contributors,
+    reviewRequired,
+    reviewMessage: reviewRequired
+      ? `${previousAssessor.evaluator}此前已填写本专业内容；本次已保留为新版本，请团队复核差异。`
+      : "",
     deidentified: true,
     syncedAt: new Date().toISOString()
   });
@@ -1526,12 +1881,33 @@ async function handleUpdateTeamMember(request, env, userId) {
   if (targetId === identity.member.user_id && (role !== "admin" || status !== "active")) {
     return json(request, env, { error: "不能停用或移除自己的管理员权限" }, 400);
   }
-  const target = await env.DB.prepare("SELECT user_id, role, status FROM team_members WHERE user_id = ?").bind(targetId).first();
+  const target = await env.DB.prepare("SELECT user_id, role, status, primary_module FROM team_members WHERE user_id = ?").bind(targetId).first();
   if (!target) return json(request, env, { error: "未找到团队成员" }, 404);
 
+  const requestedModule = cleanString(body.primaryModule, 10);
+  const primaryModule = role === "admin" || role === "viewer"
+    ? "all"
+    : PROFESSIONAL_MODULE_SET.has(requestedModule)
+      ? requestedModule
+      : PROFESSIONAL_MODULE_SET.has(target.primary_module) ? target.primary_module : "si";
+  const moduleAccess = role !== "evaluator"
+    ? "si,ot,st,pt"
+    : primaryModule === "pt" ? "pt,ot" : primaryModule;
+  const assignmentNote = role !== "evaluator"
+    ? ""
+    : primaryModule === "pt"
+      ? "运动功能主评；仅评估有肢体运动障碍或移动功能需要的学生，完成后协助OT组。"
+      : `${moduleLabel(primaryModule)}主评。`;
+
   const statements = [
-    env.DB.prepare("UPDATE team_members SET role = ?, status = ? WHERE user_id = ?").bind(role, status, targetId),
-    auditStatement(env, identity.member.user_id, "member.update", "member", targetId, { role, status })
+    env.DB.prepare(`
+      UPDATE team_members
+      SET role = ?, status = ?, primary_module = ?, module_access = ?, assignment_note = ?
+      WHERE user_id = ?
+    `).bind(role, status, primaryModule, moduleAccess, assignmentNote, targetId),
+    auditStatement(env, identity.member.user_id, "member.update", "member", targetId, {
+      role, status, primaryModule, moduleAccess
+    })
   ];
   if (status === "disabled") statements.push(env.DB.prepare('DELETE FROM "session" WHERE "userId" = ?').bind(targetId));
   await env.DB.batch(statements);
@@ -1549,8 +1925,66 @@ async function handleDeleteTeamRecord(request, env, id) {
     WHERE id = ? AND deleted_at IS NULL
   `).bind(identity.member.user_id, targetId).run();
   if (!result.meta?.changes) return json(request, env, { error: "未找到团队评估记录" }, 404);
-  await auditStatement(env, identity.member.user_id, "assessment.delete", "assessment", targetId).run();
-  return json(request, env, { ok: true });
+  await auditStatement(env, identity.member.user_id, "assessment.trash", "assessment", targetId, {
+    retentionDays: TRASH_RETENTION_DAYS
+  }).run();
+  return json(request, env, { ok: true, status: "trashed", retentionDays: TRASH_RETENTION_DAYS });
+}
+
+async function handleTeamFeedback(request, env) {
+  const identity = await teamIdentity(request, env);
+  if (identity.denied) return identity.denied;
+  const body = await parseBody(request, 12_000);
+  const category = cleanString(body.category, 30);
+  const content = cleanString(body.content, 2_000);
+  const pagePath = cleanString(body.pagePath, 160) || "/";
+  if (!FEEDBACK_CATEGORIES.has(category)) return json(request, env, { error: "请选择反馈类型" }, 400);
+  if (content.length < 5) return json(request, env, { error: "请至少填写5个字的反馈内容" }, 400);
+  const id = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO team_feedback (id, user_id, category, content, page_path, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'open', datetime('now'), datetime('now'))
+    `).bind(id, identity.member.user_id, category, content, pagePath),
+    auditStatement(env, identity.member.user_id, "feedback.create", "feedback", id, { category })
+  ]);
+  return json(request, env, { ok: true, id, status: "open" }, 201);
+}
+
+async function handleResolveTeamFeedback(request, env, id) {
+  const identity = await teamIdentity(request, env);
+  const denied = requireRole(request, env, identity, ["admin"]);
+  if (denied) return denied;
+  const targetId = cleanString(id, 80);
+  const body = await parseBody(request, 4_000);
+  const status = body.status === "open" ? "open" : "resolved";
+  const result = await env.DB.prepare(`
+    UPDATE team_feedback
+    SET status = ?, resolved_by_user_id = ?,
+        resolved_at = CASE WHEN ? = 'resolved' THEN datetime('now') ELSE NULL END,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `).bind(status, status === "resolved" ? identity.member.user_id : null, status, targetId).run();
+  if (!result.meta?.changes) return json(request, env, { error: "未找到反馈" }, 404);
+  await auditStatement(env, identity.member.user_id, "feedback.update", "feedback", targetId, { status }).run();
+  return json(request, env, { ok: true, status });
+}
+
+async function handleAdminResolveFeedback(request, env, id) {
+  const denied = await requireSuperAdmin(request, env);
+  if (denied) return denied;
+  const targetId = cleanString(id, 80);
+  const body = await parseBody(request, 4_000);
+  const status = body.status === "open" ? "open" : "resolved";
+  const result = await env.DB.prepare(`
+    UPDATE team_feedback
+    SET status = ?, resolved_by_user_id = NULL,
+        resolved_at = CASE WHEN ? = 'resolved' THEN datetime('now') ELSE NULL END,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `).bind(status, status, targetId).run();
+  if (!result.meta?.changes) return json(request, env, { error: "未找到反馈" }, 404);
+  return json(request, env, { ok: true, status });
 }
 
 async function handleVisit(request, env, heartbeatOnly = false) {
@@ -1559,23 +1993,33 @@ async function handleVisit(request, env, heartbeatOnly = false) {
   if (!sessionId) return json(request, env, { error: "无效的匿名会话" }, 400);
   const path = cleanString(body.path, 160) || "/";
   const deviceType = ["desktop", "tablet", "mobile"].includes(body.deviceType) ? body.deviceType : "unknown";
+  const countryCode = cleanString(request.cf?.country, 8);
+  const regionName = cleanString(request.cf?.region, 80);
+  const cityName = cleanString(request.cf?.city, 80);
 
   const statements = [
     env.DB.prepare(`
-      INSERT INTO visitor_sessions (session_id, first_seen, last_seen, entry_path, device_type)
-      VALUES (?, datetime('now'), datetime('now'), ?, ?)
+      INSERT INTO visitor_sessions (
+        session_id, first_seen, last_seen, entry_path, device_type,
+        country_code, region_name, city_name
+      )
+      VALUES (?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?)
       ON CONFLICT(session_id) DO UPDATE SET
         last_seen = datetime('now'),
-        device_type = excluded.device_type
-    `).bind(sessionId, path, deviceType)
+        device_type = excluded.device_type,
+        country_code = excluded.country_code,
+        region_name = excluded.region_name,
+        city_name = excluded.city_name
+    `).bind(sessionId, path, deviceType, countryCode, regionName, cityName)
   ];
 
   if (!heartbeatOnly) {
     statements.push(
       env.DB.prepare(`
-        INSERT INTO page_views (session_id, path, device_type, created_at)
-        VALUES (?, ?, ?, datetime('now'))
-      `).bind(sessionId, path, deviceType)
+        INSERT INTO page_views (
+          session_id, path, device_type, country_code, region_name, city_name, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `).bind(sessionId, path, deviceType, countryCode, regionName, cityName)
     );
   }
 
@@ -1690,20 +2134,23 @@ function aggregateDomains(rows) {
 }
 
 async function handleAdminSummary(request, env) {
-  const denied = await requireAdmin(request, env);
+  const denied = await requireSuperAdmin(request, env);
   if (denied) return denied;
 
-  const [metrics, trafficResult, recordResult, analysisResult] = await Promise.all([
+  const [metrics, trafficResult, recordResult, analysisResult, deviceResult, regionResult, pathResult, feedbackResult] = await Promise.all([
     env.DB.prepare(`
       SELECT
         (SELECT COUNT(*) FROM page_views) AS total_views,
         (SELECT COUNT(DISTINCT session_id) FROM page_views) AS total_sessions,
         (SELECT COUNT(*) FROM page_views WHERE date(created_at) = date('now')) AS today_views,
+        (SELECT COUNT(DISTINCT session_id) FROM page_views WHERE date(created_at) = date('now')) AS today_sessions,
         (SELECT COUNT(*) FROM visitor_sessions WHERE last_seen >= datetime('now', '-2 minutes')) AS active_now,
-        (SELECT COUNT(*) FROM assessment_records) AS total_assessments,
-        (SELECT COUNT(*) FROM assessment_records WHERE date(created_at) = date('now')) AS today_assessments,
+        (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL) AS total_assessments,
+        (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL AND date(updated_at) = date('now')) AS today_assessments,
+        (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NOT NULL) AS trash_records,
         (SELECT COUNT(*) FROM team_members WHERE status = 'active') AS team_member_count,
-        (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL) AS team_record_count
+        (SELECT COUNT(*) FROM team_assessments WHERE deleted_at IS NULL) AS team_record_count,
+        (SELECT COUNT(*) FROM team_feedback WHERE status = 'open') AS open_feedback_count
     `).first(),
     env.DB.prepare(`
       SELECT substr(created_at, 1, 10) AS day,
@@ -1715,46 +2162,115 @@ async function handleAdminSummary(request, env) {
       ORDER BY day ASC
     `).all(),
     env.DB.prepare(`
-      SELECT id, student_label, student_code, is_deidentified, age_text, gender,
-             class_name, primary_need, assessment_date, evaluator, setting,
-             overall_score, coverage, created_at, updated_at
-      FROM assessment_records
-      ORDER BY updated_at DESC
+      SELECT assessment.id, assessment.student_code, assessment.age_text, assessment.gender,
+             assessment.primary_need, assessment.assessment_date, assessment.overall_score,
+             assessment.coverage, assessment.version, assessment.assessment_json,
+             assessment.created_at, assessment.updated_at,
+             student.student_name, student.class_name,
+             updater.display_name AS updated_by_name
+      FROM team_assessments assessment
+      LEFT JOIN team_students student
+        ON student.student_code = assessment.student_code AND student.status = 'active'
+      LEFT JOIN team_members updater ON updater.user_id = assessment.updated_by_user_id
+      WHERE assessment.deleted_at IS NULL
+      ORDER BY assessment.updated_at DESC
       LIMIT 100
     `).all(),
     env.DB.prepare(`
       SELECT analysis_json
-      FROM assessment_records
+      FROM team_assessments
+      WHERE deleted_at IS NULL
       ORDER BY updated_at DESC
       LIMIT 500
+    `).all(),
+    env.DB.prepare(`
+      SELECT device_type AS label, COUNT(*) AS views, COUNT(DISTINCT session_id) AS sessions
+      FROM page_views
+      GROUP BY device_type
+      ORDER BY views DESC
+    `).all(),
+    env.DB.prepare(`
+      SELECT COALESCE(NULLIF(city_name, ''), NULLIF(region_name, ''), NULLIF(country_code, ''), '未知地区') AS label,
+             COUNT(*) AS views, COUNT(DISTINCT session_id) AS sessions
+      FROM page_views
+      GROUP BY label
+      ORDER BY sessions DESC, views DESC
+      LIMIT 12
+    `).all(),
+    env.DB.prepare(`
+      SELECT path AS label, COUNT(*) AS views, COUNT(DISTINCT session_id) AS sessions
+      FROM page_views
+      GROUP BY path
+      ORDER BY views DESC
+      LIMIT 12
+    `).all(),
+    env.DB.prepare(`
+      SELECT feedback.id, feedback.category, feedback.content, feedback.page_path,
+             feedback.status, feedback.created_at, feedback.resolved_at,
+             member.display_name AS author_name
+      FROM team_feedback feedback
+      LEFT JOIN team_members member ON member.user_id = feedback.user_id
+      ORDER BY CASE feedback.status WHEN 'open' THEN 0 ELSE 1 END, feedback.created_at DESC
+      LIMIT 100
     `).all()
   ]);
+
+  const records = (recordResult.results || []).map((row) => {
+    const assessment = parseJson(row.assessment_json, {});
+    return {
+      id: row.id,
+      student_label: row.student_name || row.student_code,
+      student_code: row.student_code,
+      is_deidentified: 1,
+      age_text: row.age_text,
+      gender: row.gender,
+      class_name: row.class_name || "",
+      primary_need: row.primary_need,
+      assessment_date: row.assessment_date,
+      evaluator: assessment.professionalAssessors?.[assessment.activeModule]?.evaluator || row.updated_by_name || "",
+      setting: assessment.setting || "",
+      overall_score: row.overall_score,
+      coverage: row.coverage,
+      version: row.version,
+      updated_by_name: row.updated_by_name,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  });
 
   return json(request, env, {
     generatedAt: new Date().toISOString(),
     metrics: metrics || {},
     traffic: trafficResult.results || [],
+    devices: deviceResult.results || [],
+    regions: regionResult.results || [],
+    paths: pathResult.results || [],
+    feedback: feedbackResult.results || [],
     domainAverages: aggregateDomains(analysisResult.results || []),
-    records: recordResult.results || [],
+    records,
     privacy: {
-      visitorData: "仅记录匿名会话、访问时间、页面路径和设备类别，不保存IP地址",
-      assessmentData: "仅包含使用者主动授权同步的评估记录"
+      visitorData: "仅记录匿名会话、访问时间、页面、设备类别和Cloudflare粗粒度地区，不保存IP地址",
+      assessmentData: "仅包含本部门登录成员自动同步的去标识化评估记录"
     }
   });
 }
 
 async function handleAdminRecord(request, env, id) {
-  const denied = await requireAdmin(request, env);
+  const denied = await requireSuperAdmin(request, env);
   if (denied) return denied;
   const record = await env.DB.prepare(`
-    SELECT id, student_label, student_code, is_deidentified, assessment_json,
-           analysis_json, created_at, updated_at
-    FROM assessment_records
-    WHERE id = ?
+    SELECT assessment.id, assessment.student_code, assessment.assessment_json,
+           assessment.analysis_json, assessment.created_at, assessment.updated_at,
+           student.student_name, student.class_name
+    FROM team_assessments assessment
+    LEFT JOIN team_students student ON student.student_code = assessment.student_code
+    WHERE assessment.id = ? AND assessment.deleted_at IS NULL
   `).bind(cleanString(id, 80)).first();
   if (!record) return json(request, env, { error: "未找到评估记录" }, 404);
   return json(request, env, {
     ...record,
+    student_label: record.student_name || record.student_code,
+    is_deidentified: 1,
     assessment: JSON.parse(record.assessment_json || "{}"),
     analysis: JSON.parse(record.analysis_json || "{}"),
     assessment_json: undefined,
@@ -1767,39 +2283,124 @@ function csvCell(value) {
 }
 
 async function handleAdminExport(request, env) {
-  const denied = await requireAdmin(request, env);
+  const denied = await requireSuperAdmin(request, env);
   if (denied) return denied;
   const result = await env.DB.prepare(`
-    SELECT student_label, student_code, is_deidentified, age_text, gender,
-           class_name, primary_need, assessment_date, evaluator, setting,
-           overall_score, coverage, assessment_json, created_at, updated_at
-    FROM assessment_records
-    ORDER BY updated_at DESC
+    SELECT assessment.student_code, assessment.age_text, assessment.gender,
+           assessment.primary_need, assessment.assessment_date, assessment.overall_score,
+           assessment.coverage, assessment.assessment_json, assessment.analysis_json,
+           assessment.created_at, assessment.updated_at,
+           student.student_name, student.class_name
+    FROM team_assessments assessment
+    LEFT JOIN team_students student ON student.student_code = assessment.student_code
+    WHERE assessment.deleted_at IS NULL
+    ORDER BY assessment.updated_at DESC
   `).all();
-  const header = ["学生标识", "学生编号", "去标识化", "年龄", "性别", "班级", "机构/学校", "主要发展需要", "评估日期", "评估人", "复核人", "情境", "总分", "完成度", "首次同步", "最后更新"];
+  const header = ["学生标识", "学生编号", "去标识化", "年龄", "性别", "班级", "机构/学校", "主要发展需要", "评估日期", "报告统筹人", "复核人", "情境", "功能观察均分", "完成度", "SI主评人", "OT主评人", "ST主评人", "PT主评人", "个训课建议", "首次同步", "最后更新"];
   const rows = (result.results || []).map((row) => {
     const assessment = JSON.parse(row.assessment_json || "{}");
+    const analysis = JSON.parse(row.analysis_json || "{}");
     return [
-      row.student_label, row.student_code, row.is_deidentified ? "是" : "否",
+      row.student_name || row.student_code, row.student_code, "是",
       row.age_text, row.gender, row.class_name, assessment.organizationName, row.primary_need, row.assessment_date,
-      row.evaluator, assessment.reviewer, row.setting, row.overall_score, `${row.coverage}%`, row.created_at, row.updated_at
+      assessment.evaluator, assessment.reviewer, assessment.setting, row.overall_score, `${row.coverage}%`,
+      assessment.professionalAssessors?.si?.evaluator, assessment.professionalAssessors?.ot?.evaluator,
+      assessment.professionalAssessors?.st?.evaluator, assessment.professionalAssessors?.pt?.evaluator,
+      (analysis.courseRecommendations || []).map((item) => `${item.priorityLabel || "建议"}：${item.title}`).join("；"),
+      row.created_at, row.updated_at
     ];
   });
   const csv = "\ufeff" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
   return new Response(csv, {
     headers: responseHeaders(request, env, {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="sensory-assessment-cloud-${new Date().toISOString().slice(0, 10)}.csv"`
+      "Content-Disposition": `attachment; filename="student-functional-assessment-${new Date().toISOString().slice(0, 10)}.csv"`
     })
   });
 }
 
-async function handleDeleteRecord(request, env, id) {
+async function handleAdminTrash(request, env) {
   const denied = await requireAdmin(request, env);
   if (denied) return denied;
-  const result = await env.DB.prepare("DELETE FROM assessment_records WHERE id = ?").bind(cleanString(id, 80)).run();
+  const result = await env.DB.prepare(`
+    SELECT assessment.id, assessment.student_code, assessment.primary_need,
+           assessment.assessment_date, assessment.overall_score, assessment.coverage,
+           assessment.version, assessment.created_at, assessment.deleted_at,
+           student.student_name, student.class_name,
+           deleter.display_name AS deleted_by_name,
+           (SELECT COUNT(*) FROM team_assessment_versions version
+             WHERE version.assessment_id = assessment.id) AS version_count
+    FROM team_assessments assessment
+    LEFT JOIN team_students student
+      ON student.student_code = assessment.student_code AND student.status = 'active'
+    LEFT JOIN team_members deleter ON deleter.user_id = assessment.deleted_by_user_id
+    WHERE assessment.deleted_at IS NOT NULL
+    ORDER BY datetime(assessment.deleted_at) DESC
+    LIMIT 250
+  `).all();
+  return json(request, env, {
+    retentionDays: TRASH_RETENTION_DAYS,
+    records: (result.results || []).map((row) => trashRetention({
+      ...row,
+      student_label: row.student_name || row.student_code
+    }))
+  });
+}
+
+async function handleDeleteRecord(request, env, id) {
+  const denied = await requireSuperAdmin(request, env);
+  if (denied) return denied;
+  const actorId = await signedInAdminUserId(request, env);
+  const targetId = cleanString(id, 80);
+  const result = await env.DB.prepare(`
+    UPDATE team_assessments
+    SET deleted_at = datetime('now'), deleted_by_user_id = ?, updated_at = datetime('now')
+    WHERE id = ? AND deleted_at IS NULL
+  `).bind(actorId, targetId).run();
   if (!result.meta?.changes) return json(request, env, { error: "未找到评估记录" }, 404);
-  return json(request, env, { ok: true });
+  await auditStatement(env, actorId, "assessment.trash", "assessment", targetId, {
+    retentionDays: TRASH_RETENTION_DAYS
+  }).run();
+  return json(request, env, { ok: true, status: "trashed", retentionDays: TRASH_RETENTION_DAYS });
+}
+
+async function handleRestoreRecord(request, env, id) {
+  const denied = await requireAdmin(request, env);
+  if (denied) return denied;
+  const actorId = await signedInAdminUserId(request, env);
+  const targetId = cleanString(id, 80);
+  const result = await env.DB.prepare(`
+    UPDATE team_assessments
+    SET deleted_at = NULL, deleted_by_user_id = NULL, updated_at = datetime('now')
+    WHERE id = ? AND deleted_at IS NOT NULL
+      AND datetime(deleted_at) > datetime('now', '-${TRASH_RETENTION_DAYS} days')
+  `).bind(targetId).run();
+  if (!result.meta?.changes) return json(request, env, { error: "记录不存在或已超过30天保留期" }, 404);
+  await auditStatement(env, actorId, "assessment.restore", "assessment", targetId).run();
+  return json(request, env, { ok: true, status: "active" });
+}
+
+async function handlePermanentlyDeleteRecord(request, env, id) {
+  const denied = await requireAdmin(request, env);
+  if (denied) return denied;
+  const actorId = await signedInAdminUserId(request, env);
+  const targetId = cleanString(id, 80);
+  const target = await env.DB.prepare(`
+    SELECT id, student_code, deleted_at
+    FROM team_assessments
+    WHERE id = ? AND deleted_at IS NOT NULL
+  `).bind(targetId).first();
+  if (!target) return json(request, env, { error: "回收站中未找到该评估报告" }, 404);
+  const results = await env.DB.batch([
+    auditStatement(env, actorId, "assessment.purge", "assessment", targetId, {
+      studentCode: target.student_code,
+      deletedAt: target.deleted_at
+    }),
+    env.DB.prepare("DELETE FROM team_assessment_versions WHERE assessment_id = ?").bind(targetId),
+    env.DB.prepare("DELETE FROM team_assessments WHERE id = ? AND deleted_at IS NOT NULL").bind(targetId)
+  ]);
+  if (!results[2]?.meta?.changes) return json(request, env, { error: "永久删除未完成，请刷新后重试" }, 409);
+  return json(request, env, { ok: true, status: "purged" });
 }
 
 function routePath(request) {
@@ -1818,12 +2419,14 @@ export async function onRequestPost(context) {
   if (!originIsAllowed(request, env)) return json(request, env, { error: "不允许的请求来源" }, 403);
   const path = routePath(request);
   try {
+    await maintainAssessmentTrash(path, env);
     if (path === "/api/team/login") return handleTeamLogin(request, env);
     if (path === "/api/team/invite-code") return handleInviteInfo(request, env);
     if (path === "/api/team/register") return handleTeamRegister(request, env);
     if (path === "/api/team/logout") return handleTeamLogout(request, env);
     if (path === "/api/team/change-password") return handleChangePassword(request, env);
     if (path === "/api/team/assessments") return handleTeamAssessment(request, env);
+    if (path === "/api/team/feedback") return handleTeamFeedback(request, env);
     if (path === "/api/team/invites") return handleCreateTeamInvite(request, env);
     if (path === "/api/team/students") return handleUpsertTeamStudent(request, env);
     const studentGoal = path.match(/^\/api\/team\/students\/([^/]+)\/goals$/);
@@ -1835,6 +2438,14 @@ export async function onRequestPost(context) {
     if (path === "/api/admin/team/invites") return handleAdminBootstrapInvite(request, env);
     if (path === "/api/admin/team/roster/import") return handleAdminTeamRosterImport(request, env);
     if (path === "/api/admin/team/care/bootstrap") return handleAdminCareBootstrap(request, env);
+    const adminFeedbackStatus = path.match(/^\/api\/admin\/feedback\/([^/]+)\/status$/);
+    if (adminFeedbackStatus) return handleAdminResolveFeedback(request, env, adminFeedbackStatus[1]);
+    const trashRestore = path.match(/^\/api\/admin\/trash\/([^/]+)\/restore$/);
+    if (trashRestore) return handleRestoreRecord(request, env, trashRestore[1]);
+    const memberPasswordReset = path.match(/^\/api\/team\/members\/([^/]+)\/reset-password$/);
+    if (memberPasswordReset) return handleResetTeamMemberPassword(request, env, memberPasswordReset[1]);
+    const feedbackStatus = path.match(/^\/api\/team\/feedback\/([^/]+)\/status$/);
+    if (feedbackStatus) return handleResolveTeamFeedback(request, env, feedbackStatus[1]);
     if (path.startsWith("/api/team/members/")) return handleUpdateTeamMember(request, env, path.split("/").pop());
     if (path === "/api/analytics/visit") return handleVisit(request, env, false);
     if (path === "/api/analytics/heartbeat") return handleVisit(request, env, true);
@@ -1856,6 +2467,7 @@ export async function onRequestGet(context) {
   if (!originIsAllowed(request, env)) return json(request, env, { error: "不允许的请求来源" }, 403);
   const path = routePath(request);
   try {
+    await maintainAssessmentTrash(path, env);
     if (path === "/api/team/session") return handleTeamSession(request, env);
     if (path === "/api/team/summary") return handleTeamSummary(request, env);
     const teamStudent = path.match(/^\/api\/team\/students\/([^/]+)$/);
@@ -1868,6 +2480,7 @@ export async function onRequestGet(context) {
         : handleSharedReportInfo(request, env, sharedReport[1]);
     }
     if (path === "/api/admin/summary") return handleAdminSummary(request, env);
+    if (path === "/api/admin/trash") return handleAdminTrash(request, env);
     if (path === "/api/admin/export") return handleAdminExport(request, env);
     if (path.startsWith("/api/admin/records/")) return handleAdminRecord(request, env, path.split("/").pop());
     return json(request, env, { error: "接口不存在" }, 404);
@@ -1882,11 +2495,14 @@ export async function onRequestDelete(context) {
   if (!originIsAllowed(request, env)) return json(request, env, { error: "不允许的请求来源" }, 403);
   const path = routePath(request);
   try {
+    await maintainAssessmentTrash(path, env);
     const teamStudent = path.match(/^\/api\/team\/students\/([^/]+)$/);
     if (teamStudent) return handleArchiveTeamStudent(request, env, teamStudent[1]);
     const intervention = path.match(/^\/api\/team\/interventions\/([^/]+)$/);
     if (intervention) return handleDeleteIntervention(request, env, intervention[1]);
     if (path.startsWith("/api/team/records/")) return handleDeleteTeamRecord(request, env, path.split("/").pop());
+    const trashRecord = path.match(/^\/api\/admin\/trash\/([^/]+)$/);
+    if (trashRecord) return handlePermanentlyDeleteRecord(request, env, trashRecord[1]);
     if (path.startsWith("/api/admin/records/")) return handleDeleteRecord(request, env, path.split("/").pop());
     return json(request, env, { error: "接口不存在" }, 404);
   } catch (error) {

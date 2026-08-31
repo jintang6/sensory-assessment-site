@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { buildAssessmentReportDocument } from "../report-docx.js";
 
@@ -13,17 +13,21 @@ const docx = importedModule.Document
     ? importedModule.default
     : globalThis.docx;
 if (!docx?.Document || !docx?.Packer) throw new Error("DOCX module did not expose the expected API");
-const domainTitles = [
-  "触觉调节与辨别", "前庭调节与运动耐受", "本体觉处理与力量调节", "听觉调节与辨别",
-  "视觉调节与视觉运动", "口腔感觉与进食参与", "姿势控制与平衡", "双侧协调与身体中线",
-  "动作计划与执行", "精细动作与书写准备", "唤醒水平与情绪调节", "日常活动与社会参与"
+const domainDefinitions = [
+  ["触觉调节与辨别", "si"], ["前庭调节与运动耐受", "si"], ["本体觉处理与力量调节", "si"],
+  ["听觉调节与辨别", "si"], ["唤醒水平与情绪调节", "si"],
+  ["视觉调节与视觉运动", "ot"], ["双侧协调与身体中线", "ot"], ["动作计划与执行", "ot"],
+  ["精细动作与书写准备", "ot"], ["日常活动与社会参与", "ot"],
+  ["口腔感觉与进食参与", "st"], ["语言理解与表达", "st"], ["功能性沟通与互动", "st"],
+  ["姿势控制与平衡", "pt"], ["粗大运动与移动", "pt"], ["平衡、耐力与运动参与", "pt"]
 ];
 const domainScores = {};
 const domains = {};
-domainTitles.forEach((title, index) => {
+domainDefinitions.forEach(([title, professional], index) => {
   const id = `domain_${index + 1}`;
   domainScores[id] = {
     title,
+    professional,
     score: Number((2.2 + (index % 5) * 0.55).toFixed(1)),
     answered: 5,
     impact: index % 4
@@ -48,6 +52,12 @@ const row = {
     evaluator: "测试评估人",
     reviewer: "测试复核人",
     assessmentDate: "2026-08-30",
+    professionalAssessors: {
+      si: { evaluator: "李老师", assessmentDate: "2026-08-26" },
+      ot: { evaluator: "周老师", assessmentDate: "2026-08-27" },
+      st: { evaluator: "王老师", assessmentDate: "2026-08-28" },
+      pt: { evaluator: "陈老师", assessmentDate: "2026-08-29" }
+    },
     setting: "综合观察",
     communicationMode: "口语沟通",
     mobility: "独立移动",
@@ -61,6 +71,36 @@ const row = {
     coverage: 100,
     level: "发展中",
     confidence: "较高",
+    courseRecommendations: [
+      {
+        rank: 1,
+        courseId: "st",
+        title: "言语语言个训（ST）",
+        priorityLabel: "首选",
+        needIndex: 78,
+        rationale: "语言理解、功能性表达与互动参与对课堂指令执行的影响最明显。",
+        focus: "理解单步至两步指令、主动表达需要、轮替互动"
+      },
+      {
+        rank: 2,
+        courseId: "ot",
+        title: "作业治疗个训（OT）",
+        priorityLabel: "第二建议",
+        needIndex: 69,
+        rationale: "精细操作、动作计划与日常任务独立性需要进一步支持。",
+        focus: "双手协作、任务步骤组织、生活与课堂操作"
+      }
+    ],
+    courseRecommendationNotes: [
+      "建议优先安排ST个训，并由OT作为第二支持方向。",
+      "课程建议用于团队讨论，不替代治疗师面谈、禁忌筛查与实际排课决策。"
+    ],
+    moduleReadiness: {
+      si: { label: "感觉统合", ready: true, validDomainCount: 12, totalDomainCount: 12, requiredDomainCount: 5, coverage: 100 },
+      ot: { label: "作业治疗", ready: true, validDomainCount: 13, totalDomainCount: 13, requiredDomainCount: 5, coverage: 100 },
+      st: { label: "言语语言", ready: true, validDomainCount: 11, totalDomainCount: 11, requiredDomainCount: 4, coverage: 100 },
+      pt: { label: "运动功能", ready: true, validDomainCount: 11, totalDomainCount: 11, requiredDomainCount: 4, coverage: 100 }
+    },
     summary: "学生在当前支持条件下能够完成部分熟悉活动，在本体觉输入后的姿势控制和双手操作中表现相对稳定；声音干扰、活动转换和新动作计划仍会明显影响课堂参与。",
     basis: [
       "学生情况：全面发育迟缓/智力障碍；沟通方式为口语沟通；移动能力为独立移动。",
@@ -94,7 +134,8 @@ const row = {
   }
 };
 
-const documentFile = buildAssessmentReportDocument(row, docx);
+const fontData = await readFile(new URL("../assets/NotoSansSC-Regular-GB2312.ttf", import.meta.url));
+const documentFile = buildAssessmentReportDocument(row, docx, fontData);
 const arrayBuffer = await docx.Packer.toArrayBuffer(documentFile);
 await writeFile(outputPath, Buffer.from(arrayBuffer));
 process.stdout.write(`${outputPath}\n`);

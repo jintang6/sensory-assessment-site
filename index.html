@@ -3,55 +3,92 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>知衡 · 感觉统合功能评估</title>
-  <meta name="description" content="面向特殊教育学校的感觉统合功能观察、优势分析与康复目标制定工作台。">
+  <title>知衡 · 学生功能评估与康复支持</title>
+  <meta name="description" content="面向特殊教育学校的多专业功能观察、康复目标与个训课分流支持平台。">
   <link rel="stylesheet" href="./styles.css">
 </head>
-<body class="assessment-body">
+<body class="assessment-body auth-pending" data-module-page="si">
   <header class="app-header">
-    <div class="brand-block">
-      <div class="brand-mark" aria-hidden="true">
-        <span>知</span>
-        <i></i>
-      </div>
-      <div>
-        <div class="brand-line">
-          <h1>知衡</h1>
-          <span class="product-label">感觉统合功能评估</span>
+    <div class="assessment-header-main">
+      <button class="brand-block brand-menu-trigger" id="appMenuBtn" type="button" aria-label="打开账号与功能菜单" aria-expanded="false" aria-controls="appDrawer">
+        <svg class="brand-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        <div class="brand-mark" aria-hidden="true">
+          <span>知</span>
+          <i></i>
         </div>
-        <p>特殊教育学校 · 康复评估与目标制定</p>
-      </div>
+        <div>
+          <div class="brand-line">
+            <h1>知衡</h1>
+            <span class="product-label" id="productLabel">学生功能评估与康复支持</span>
+          </div>
+          <p id="productSubtitle">特殊教育学校 · 多专业评估、目标制定与协作</p>
+        </div>
+      </button>
+
+      <nav class="header-actions" aria-label="主要操作">
+        <a class="button quiet admin-link" href="./team.html" title="打开团队工作台">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg>
+          <span>团队工作台</span>
+        </a>
+        <a class="button quiet admin-link" id="headerAdminLink" href="./admin.html" title="打开数据后台" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg>
+          <span>数据后台</span>
+        </a>
+        <button class="button quiet" id="newRecordBtn" type="button" title="新建评估">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <span>新建</span>
+        </button>
+        <button class="button primary" id="saveRecordBtn" type="button" title="立即保存并尝试同步">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4Zm4 0v6h7V4M8 20v-7h8v7"/></svg>
+          <span>立即保存</span>
+        </button>
+        <button class="button quiet report-action" id="printBtn" type="button" title="打印综合报告">
+          <svg class="print-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z"/></svg>
+          <svg class="share-action-icon" viewBox="0 0 24 24" aria-hidden="true" hidden><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
+          <span id="printActionLabel">综合报告</span>
+        </button>
+      </nav>
     </div>
 
-    <nav class="header-actions" aria-label="主要操作">
-      <a class="button quiet admin-link" href="./team.html" title="打开团队工作台">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg>
-        <span>团队工作台</span>
-      </a>
-      <a class="button quiet admin-link" href="./admin.html" title="打开数据后台">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg>
-        <span>数据后台</span>
-      </a>
-      <button class="button quiet" id="newRecordBtn" type="button" title="新建评估">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        <span>新建</span>
-      </button>
-      <button class="button primary" id="saveRecordBtn" type="button" title="立即保存并尝试同步">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4Zm4 0v6h7V4M8 20v-7h8v7"/></svg>
-        <span>立即保存</span>
-      </button>
-      <button class="button quiet report-action" id="printBtn" type="button" title="打印报告">
-        <svg class="print-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z"/></svg>
-        <svg class="share-action-icon" viewBox="0 0 24 24" aria-hidden="true" hidden><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
-        <span id="printActionLabel">打印</span>
-      </button>
+    <nav class="professional-site-nav" aria-label="四个专业评估入口">
+      <span>专业入口</span>
+      <a data-module-link="si" href="./"><b>感觉统合</b><small>SI</small></a>
+      <a data-module-link="ot" href="./ot/"><b>作业治疗</b><small>OT</small></a>
+      <a data-module-link="st" href="./st/"><b>言语语言</b><small>ST</small></a>
+      <a data-module-link="pt" href="./movement/"><b>运动功能</b><small>PT</small></a>
+      <button class="professional-summary-link" id="showSummaryBtn" type="button">查看综合汇总</button>
     </nav>
   </header>
+
+  <button class="drawer-backdrop" id="drawerBackdrop" type="button" aria-label="关闭侧栏" hidden></button>
+  <aside class="app-drawer" id="appDrawer" aria-label="账号与功能导航" aria-hidden="true">
+    <div class="drawer-account">
+      <div class="drawer-avatar" id="drawerAvatar">知</div>
+      <div><strong id="drawerUserName">正在验证账号</strong><span id="drawerUserRole">—</span><small id="drawerUserEmail">—</small></div>
+      <button class="icon-button" id="closeDrawerBtn" type="button" aria-label="关闭侧栏"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <p class="drawer-assignment" id="drawerAssignment">登录后显示专业分工</p>
+    <nav class="drawer-nav" aria-label="专业评估入口">
+      <span>专业评估</span>
+      <a href="./" data-drawer-module="si"><b>SI</b><span><strong>感觉统合评估</strong><small>感觉调节、身体觉与活动状态</small></span></a>
+      <a href="./ot/" data-drawer-module="ot"><b>OT</b><span><strong>作业治疗评估</strong><small>自理、操作与任务参与</small></span></a>
+      <a href="./st/" data-drawer-module="st"><b>ST</b><span><strong>言语语言评估</strong><small>语言、沟通与口腔参与</small></span></a>
+      <a href="./movement/" data-drawer-module="pt"><b>PT</b><span><strong>运动功能评估</strong><small>姿势、移动、平衡与耐力</small></span></a>
+    </nav>
+    <nav class="drawer-nav drawer-system-nav" aria-label="团队功能">
+      <span>团队与支持</span>
+      <a href="./team.html?tab=roster"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg><span><strong>学生与团队管理</strong><small>名单、档案、目标与成员协作</small></span></a>
+      <a href="./admin.html" id="drawerAdminLink" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg><span><strong>运营与数据后台</strong><small>仅超级管理员可查看</small></span></a>
+      <button type="button" data-drawer-action="instructions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a3 3 0 0 1 3-3h13v17H7a3 3 0 0 0-3 3V5Zm0 14a3 3 0 0 1 3-3h13"/></svg><span><strong>使用说明</strong><small>评分标准、操作规范与专业边界</small></span></button>
+      <button type="button" data-drawer-action="feedback"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"/></svg><span><strong>意见反馈</strong><small>提交内容、流程或故障建议</small></span></button>
+    </nav>
+    <button class="drawer-logout" id="drawerLogoutBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m11-9h6v18h-6"/></svg>退出登录</button>
+  </aside>
 
   <div class="method-strip">
     <div class="method-inner">
       <span class="method-dot" aria-hidden="true"></span>
-      <p><strong>学校场景功能性观察工具</strong>，强调活动参与、环境支持与可观察表现，不替代标准化量表或医学诊断。</p>
+      <p id="methodIntro"><strong>多专业学校场景功能性观察工具</strong>，强调活动参与、环境支持与可观察表现，不替代标准化量表或医学诊断。</p>
       <button class="text-button" id="methodBtn" type="button">评分依据与专业说明</button>
     </div>
   </div>
@@ -180,8 +217,8 @@
               <input id="assessmentDate" name="assessmentDate" type="date">
             </label>
             <label class="field">
-              <span>评估人</span>
-              <input id="evaluator" name="evaluator" placeholder="治疗师/教师">
+              <span>报告统筹人</span>
+              <input id="evaluator" name="evaluator" placeholder="负责汇总和复核的教师/治疗师">
             </label>
             <label class="field">
               <span>报告复核人</span>
@@ -228,6 +265,35 @@
             </label>
           </div>
 
+          <section class="professional-assignment" aria-labelledby="professionalAssignmentTitle">
+            <div class="professional-assignment-head">
+              <div><span class="eyebrow">同一学生 · 分专业记录</span><h4 id="professionalAssignmentTitle">多专业评估分工</h4></div>
+              <p id="automaticAssessorNote">评估者由登录账号自动署名；不同专业可继续同一份云端档案。</p>
+            </div>
+            <div class="professional-assignment-grid">
+              <article data-module-assignment="si">
+                <header><span>SI</span><div><b>感觉统合</b><small data-module-status="si">0/12个有效领域</small></div></header>
+                <label class="field"><span>系统署名</span><input id="siEvaluator" readonly placeholder="登录后自动填写"></label>
+                <label class="field"><span>评估日期</span><input id="siAssessmentDate" type="date"></label>
+              </article>
+              <article data-module-assignment="ot">
+                <header><span>OT</span><div><b>作业治疗</b><small data-module-status="ot">0/13个有效领域</small></div></header>
+                <label class="field"><span>系统署名</span><input id="otEvaluator" readonly placeholder="登录后自动填写"></label>
+                <label class="field"><span>评估日期</span><input id="otAssessmentDate" type="date"></label>
+              </article>
+              <article data-module-assignment="st">
+                <header><span>ST</span><div><b>言语语言</b><small data-module-status="st">0/11个有效领域</small></div></header>
+                <label class="field"><span>系统署名</span><input id="stEvaluator" readonly placeholder="登录后自动填写"></label>
+                <label class="field"><span>评估日期</span><input id="stAssessmentDate" type="date"></label>
+              </article>
+              <article data-module-assignment="pt">
+                <header><span>PT</span><div><b>运动功能</b><small data-module-status="pt">0/11个有效领域</small></div></header>
+                <label class="field"><span>系统署名</span><input id="ptEvaluator" readonly placeholder="登录后自动填写"></label>
+                <label class="field"><span>评估日期</span><input id="ptAssessmentDate" type="date"></label>
+              </article>
+            </div>
+          </section>
+
           <fieldset class="observation-sources">
             <legend>观察来源（建议至少两个情境）</legend>
             <div class="chip-checks">
@@ -257,8 +323,8 @@
             <div>
               <span class="step-index">02</span>
               <div>
-                <h3>感觉统合与功能表现</h3>
-                <p>对每项可观察能力评分；未观察到的项目保持“未评”，不计入结果。</p>
+                <h3 id="assessmentModuleHeading">多专业功能表现评估</h3>
+                <p id="assessmentModuleDescription">当前入口默认显示本专业领域；未观察到的项目保持“未评”，不计入结果。</p>
               </div>
             </div>
           </div>
@@ -273,11 +339,24 @@
           </div>
 
           <div class="category-filter" id="categoryFilter" aria-label="领域筛选">
-            <button class="active" type="button" data-category="all">全部领域</button>
-            <button type="button" data-category="modulation">感觉调节</button>
-            <button type="button" data-category="sensorimotor">感觉运动</button>
-            <button type="button" data-category="participation">调节与参与</button>
+            <button type="button" data-professional="all">全部专业</button>
+            <button class="active" type="button" data-professional="si">感觉统合 SI</button>
+            <button type="button" data-professional="ot">作业治疗 OT</button>
+            <button type="button" data-professional="st">言语语言 ST</button>
+            <button type="button" data-professional="pt">运动功能 PT</button>
           </div>
+
+          <section class="module-catalog" id="moduleCatalog" aria-labelledby="moduleCatalogTitle">
+            <div class="module-catalog-head">
+              <div>
+                <span class="eyebrow">完整评估目录</span>
+                <h4 id="moduleCatalogTitle">本专业领域</h4>
+              </div>
+              <strong id="moduleCatalogCount">正在载入</strong>
+            </div>
+            <p id="moduleCatalogGuidance">按真实观察逐项评分；未观察项目保留“未评”，不要凭推测补分。</p>
+            <div class="module-catalog-list" id="moduleCatalogList"></div>
+          </section>
         </section>
 
         <div class="domain-list" id="domainList"></div>
@@ -297,11 +376,11 @@
         <div class="score-hero">
           <div class="score-ring" id="scoreRing">
             <strong id="averageScore">—</strong>
-            <span>综合分</span>
+            <span>功能观察均分</span>
           </div>
           <div class="score-copy">
             <h3 id="overallLevel">尚未形成结果</h3>
-            <p id="overallSummary">至少完成3个领域、每个领域3项后生成综合分析。</p>
+            <p id="overallSummary">至少完成3个有效领域后生成本专业初步分析；每个领域至少完成60%的项目。</p>
           </div>
         </div>
         <div class="priority-tags" id="priorityTags"></div>
@@ -313,22 +392,22 @@
             <svg viewBox="0 0 24 24"><path d="M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3Zm0 0v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
           </div>
           <div>
-            <h3>团队云备份</h3>
-            <p id="cloudDescription">自动保存于本机；登录团队后可同步</p>
+            <h3>团队自动云备份</h3>
+            <p id="cloudDescription">正在验证团队登录状态</p>
           </div>
           <label class="switch" title="启用或停用云端同步">
-            <input id="cloudSyncToggle" type="checkbox">
+            <input id="cloudSyncToggle" type="checkbox" checked disabled>
             <span></span>
           </label>
         </div>
         <div class="sync-status" id="syncStatus">
-          <i></i><span>未启用 · 仅自动保存在本机</span>
+          <i></i><span>登录验证中</span>
         </div>
         <div class="cloud-actions">
-          <button class="text-button manage-privacy" id="privacyManageBtn" type="button">隐私与同步设置</button>
+          <button class="text-button manage-privacy" id="privacyManageBtn" type="button">查看同步与隐私范围</button>
           <button class="sync-now-button" id="syncNowBtn" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M5 20h14"/></svg>
-            <span>启用同步</span>
+            <span>立即同步</span>
           </button>
         </div>
       </section>
@@ -338,6 +417,7 @@
           <button class="active" type="button" data-result-tab="profile">优势与需要</button>
           <button type="button" data-result-tab="goals">康复目标</button>
           <button type="button" data-result-tab="strategies">支持策略</button>
+          <button type="button" data-result-tab="courses">个训建议</button>
         </div>
 
         <div class="result-panel active" data-result-panel="profile">
@@ -366,6 +446,14 @@
 
         <div class="result-panel" data-result-panel="strategies">
           <ol class="strategy-list" id="strategyList"></ol>
+        </div>
+
+        <div class="result-panel course-result-panel" data-result-panel="courses">
+          <div class="course-note">系统最多提出“首选 + 第二建议”两项个训方向；资料不足的专业会标为待补评，最终排课须由跨专业团队确认。</div>
+          <div class="course-recommendation-list" id="courseRecommendationList"></div>
+          <h3 class="course-subheading">四专业资料状态</h3>
+          <div class="course-module-readiness" id="courseModuleReadiness"></div>
+          <ol class="course-decision-notes" id="courseRecommendationNotes"></ol>
         </div>
       </section>
 
@@ -397,7 +485,15 @@
       </section>
       <section>
         <h3>个别化生成逻辑</h3>
-        <p>系统会综合领域得分、参与影响、当前支持等级和关键项目最低表现确定优先顺序，再结合学生的沟通方式、移动能力、主要情境、观察来源与配合可信度生成优势、8周目标和支持策略。自动结果应由教师、治疗师与家庭结合真实活动复核和调整。</p>
+        <p>系统会综合领域得分、参与影响、当前支持等级和关键项目最低表现确定优先顺序，再结合沟通方式、移动能力、观察来源和专业模块完成度生成优势、8周目标、支持策略及最多两项个训方向。自动结果应由教师、治疗师与家庭结合真实活动复核和调整。</p>
+      </section>
+      <section>
+        <h3>参与影响怎么选</h3>
+        <p>“参与影响”不是配合意愿，而是相关困难对课堂学习、生活自理、游戏交往、校园移动和安全的实际后果。建议按近1至2周的典型表现选择；每次选择后，页面会显示该等级的具体含义。</p>
+      </section>
+      <section>
+        <h3>个训课建议边界</h3>
+        <p>系统只在相应专业达到最低资料量后参与分流：SI与OT至少5个有效领域，ST与PT至少4个有效领域。未评模块不能解释为“不需要”，建议必须结合医学安全、家庭目标、学生承受度和学校课时资源复核。</p>
       </section>
       <section>
         <h3>参考框架</h3>
@@ -410,6 +506,8 @@
           <a href="https://www.who.int/standards/classifications/international-classification-of-functioning-disability-and-health" target="_blank" rel="noreferrer">WHO ICF</a>
           <a href="https://www.aota.org/practice/clinical-topics/sensory-integration-and-processing" target="_blank" rel="noreferrer">AOTA 感觉统合与处理</a>
           <a href="https://www.aota.org/practice/practice-settings/schools-early-intervention-community-education/schools" target="_blank" rel="noreferrer">AOTA 学校实践</a>
+          <a href="https://www.asha.org/practice-portal/" target="_blank" rel="noreferrer">ASHA 言语语言实践</a>
+          <a href="https://pediatricapta.org/" target="_blank" rel="noreferrer">APTA 儿童物理治疗</a>
         </div>
       </section>
     </div>
@@ -418,8 +516,8 @@
   <dialog class="modal consent-modal" id="cloudConsentDialog">
     <div class="modal-head">
       <div>
-        <span class="eyebrow">隐私与授权</span>
-        <h2>启用云端同步</h2>
+        <span class="eyebrow">隐私与同步</span>
+        <h2>登录后自动云备份</h2>
       </div>
       <button class="icon-button close-dialog" type="button" aria-label="关闭">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
@@ -429,27 +527,35 @@
       <div class="privacy-principles">
         <div><b>访问统计匿名</b><span>不保存IP地址，仅统计会话、时间、页面和设备类别。</span></div>
         <div><b>团队账号与授权</b><span>仅受邀成员登录后可同步和查看本部门记录。</span></div>
-        <div><b>本地记录保留</b><span>无论是否同步，当前浏览器仍保存一份可导出的本地记录。</span></div>
+        <div><b>账号隔离的本地记录</b><span>当前浏览器仍保留一份可导出的本地记录，并按登录账号隔离。</span></div>
       </div>
 
       <fieldset class="sync-mode">
         <legend>固定同步范围</legend>
         <label>
           <input type="radio" name="syncMode" value="deidentified" checked disabled>
-          <span><b>团队去标识化同步</b><small>服务端固定排除姓名、班级、机构、评估人、复核人、背景和医疗注意事项；请使用专门的协作编号，不使用学籍号。</small></span>
+          <span><b>团队去标识化同步</b><small>服务端固定排除学生姓名、班级、机构、统筹人、复核人、背景和医疗注意事项；专业主评人仅在受邀团队内用于责任追溯。请使用专门协作编号，不使用学籍号。</small></span>
         </label>
       </fieldset>
 
-      <label class="authority-check">
-        <input id="consentAuthority" type="checkbox">
-        <span>我确认已完成本校要求的监护人或机构授权，并不会在协作编号或观察记录中填写可直接识别学生身份的信息。</span>
-      </label>
-
       <div class="modal-actions">
-        <button class="button quiet close-dialog" type="button">取消</button>
-        <button class="button primary" id="confirmCloudBtn" type="button" disabled>确认并启用</button>
+        <button class="button primary" id="confirmCloudBtn" type="button">知道了</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="modal feedback-dialog" id="feedbackDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">团队改进</span><h2>提交意见反馈</h2></div>
+      <button class="icon-button close-feedback-dialog" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <form class="modal-body" id="feedbackForm">
+      <label class="field"><span>反馈类型</span><select id="feedbackCategory" required><option value="suggestion">功能建议</option><option value="content">评估内容</option><option value="workflow">操作流程</option><option value="bug">故障问题</option><option value="other">其他</option></select></label>
+      <label class="field"><span>具体内容</span><textarea id="feedbackContent" minlength="5" maxlength="2000" required placeholder="请描述出现的位置、实际情况和你的建议。不要填写学生姓名或其他身份信息。"></textarea></label>
+      <p class="feedback-privacy-note">反馈会附带当前页面与登录账号，供部门管理员跟进；不会记录 IP 地址。</p>
+      <div class="form-error" id="feedbackError" role="alert"></div>
+      <div class="modal-actions"><button class="button quiet close-feedback-dialog" type="button">取消</button><button class="button primary" type="submit">提交反馈</button></div>
+    </form>
   </dialog>
 
   <dialog class="modal share-report-dialog" id="shareReportDialog">
@@ -465,7 +571,7 @@
     <div class="modal-body share-report-body">
       <div class="share-file-preview">
         <div class="word-file-icon" aria-hidden="true">W</div>
-        <div><strong id="shareReportFilename">正在生成报告…</strong><span id="shareReportStatus">正在整理评估结果与正式版式</span></div>
+        <div><strong id="shareReportFilename">正在生成综合报告…</strong><span id="shareReportStatus">正在汇总多专业评估结果与正式版式</span></div>
       </div>
       <p class="share-report-note" id="shareReportNote">微信无法稳定转发网页生成的临时 Word 文件。报告生成后，可创建一个限时下载链接。</p>
       <label class="authority-check report-share-consent" id="shareReportConsentWrap">

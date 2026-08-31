@@ -177,9 +177,96 @@
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
 }
+
+.analytics-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.compact-breakdown {
+  padding-bottom: 10px;
+}
+
+.breakdown-list {
+  display: grid;
+  gap: 10px;
+}
+
+.breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) minmax(90px, 1.3fr) auto;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+}
+
+.breakdown-row > span {
+  overflow: hidden;
+  color: var(--ink-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-row > div {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.breakdown-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+}
+
+.breakdown-row strong {
+  color: var(--ink-faint);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.admin-feedback-list {
+  display: grid;
+}
+
+.admin-feedback-item {
+  display: grid;
+  gap: 9px;
+  padding: 14px 17px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-feedback-item.resolved { background: var(--surface-subtle); opacity: .72; }
+.admin-feedback-item header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; }
+.admin-feedback-item header span { padding: 3px 7px; border-radius: 4px; background: var(--blue-soft); color: var(--blue); font-size: 10px; font-weight: 800; }
+.admin-feedback-item header strong { font-size: 12px; }
+.admin-feedback-item header time,
+.admin-feedback-item footer small { color: var(--ink-faint); font-size: 10px; }
+.admin-feedback-item p { margin: 0; color: var(--ink-soft); white-space: pre-wrap; }
+.admin-feedback-item footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.admin-guidance-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-guidance-list p {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+}
+
+.admin-guidance-list strong,
+.admin-guidance-list span { display: block; }
+.admin-guidance-list span { margin-top: 4px; color: var(--ink-soft); font-size: 13px; line-height: 1.65; }
 
 .metric-card {
   min-height: 118px;
@@ -400,7 +487,28 @@
 
 .admin-filters {
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.recycle-bin-button {
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.recycle-bin-button span {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #e7edef;
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 800;
 }
 
 .admin-filter {
@@ -483,6 +591,11 @@
   color: var(--blue);
   font-size: 10px;
   font-weight: 750;
+}
+
+.danger-link {
+  border-color: currentColor;
+  color: #a5443c;
 }
 
 .record-row-actions {
@@ -644,6 +757,54 @@
   border-top: 1px solid var(--line);
 }
 
+.trash-dialog {
+  width: min(1050px, calc(100vw - 28px));
+}
+
+.trash-dialog-body {
+  display: grid;
+  gap: 12px;
+  max-height: 66vh;
+  overflow-y: auto;
+}
+
+.trash-retention-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--blue);
+  background: #eef5f8;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.trash-table td:last-child {
+  min-width: 118px;
+}
+
+.retention-badge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--green-soft);
+  color: #326545;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.retention-badge.urgent {
+  background: var(--amber-soft);
+  color: #8b500d;
+}
+
+.trash-dialog-hint {
+  align-self: center;
+  color: var(--ink-faint);
+  font-size: 9.5px;
+}
+
 .record-action-group {
   display: flex;
   gap: 9px;
@@ -659,6 +820,10 @@
   }
 
   .chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-breakdown-grid {
     grid-template-columns: 1fr;
   }
 
@@ -740,6 +905,11 @@
 
   .admin-filters {
     flex-direction: column;
+  }
+
+  .recycle-bin-button {
+    width: 100%;
+    justify-content: center;
   }
 
   .admin-filter select {

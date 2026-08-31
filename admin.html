@@ -4,19 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>知衡 · 数据后台</title>
-  <meta name="description" content="感觉统合评估网站的访问统计与授权同步数据后台。">
+  <meta name="description" content="知衡多专业学生功能评估平台的访问统计与授权同步数据后台。">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./admin.css">
 </head>
 <body class="admin-body">
   <header class="app-header admin-header">
-    <div class="brand-block">
+    <button class="brand-block brand-menu-trigger" id="adminMenuBtn" type="button" aria-label="打开账号与功能菜单" aria-expanded="false" aria-controls="adminDrawer">
+      <svg class="brand-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       <div class="brand-mark" aria-hidden="true"><span>知</span><i></i></div>
       <div>
         <div class="brand-line"><h1>知衡</h1><span class="product-label">数据后台</span></div>
         <p>匿名访问统计 · 授权评估数据</p>
       </div>
-    </div>
+    </button>
     <div class="header-actions">
       <a class="button quiet" href="./team.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg>
@@ -29,17 +30,42 @@
     </div>
   </header>
 
+  <button class="drawer-backdrop" id="adminDrawerBackdrop" type="button" aria-label="关闭侧栏" hidden></button>
+  <aside class="app-drawer" id="adminDrawer" aria-label="账号与功能导航" aria-hidden="true">
+    <div class="drawer-account">
+      <div class="drawer-avatar" id="adminDrawerAvatar">知</div>
+      <div><strong id="adminDrawerUserName">超级管理员验证中</strong><span id="adminDrawerUserRole">运营与数据后台</span><small id="adminDrawerUserEmail">—</small></div>
+      <button class="icon-button" id="closeAdminDrawerBtn" type="button" aria-label="关闭侧栏"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <p class="drawer-assignment">此区域包含访问统计、团队反馈和云端评估数据，仅超级管理员可以进入。</p>
+    <nav class="drawer-nav" aria-label="专业评估入口">
+      <span>专业评估</span>
+      <a href="./"><b>SI</b><span><strong>感觉统合评估</strong><small>感觉调节、身体觉与活动状态</small></span></a>
+      <a href="./ot/"><b>OT</b><span><strong>作业治疗评估</strong><small>自理、操作与任务参与</small></span></a>
+      <a href="./st/"><b>ST</b><span><strong>言语语言评估</strong><small>语言、沟通与口腔参与</small></span></a>
+      <a href="./movement/"><b>PT</b><span><strong>运动功能评估</strong><small>姿势、移动、平衡与耐力</small></span></a>
+    </nav>
+    <nav class="drawer-nav drawer-system-nav" aria-label="团队功能">
+      <span>团队与支持</span>
+      <a href="./team.html?tab=roster"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg><span><strong>学生与团队管理</strong><small>名单、档案、目标与成员协作</small></span></a>
+      <a href="./admin.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg><span><strong>运营与数据后台</strong><small>当前页面 · 仅超级管理员</small></span></a>
+      <button type="button" data-admin-drawer-action="feedback"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"/></svg><span><strong>意见反馈</strong><small>查看与处理团队建议</small></span></button>
+      <button type="button" data-admin-drawer-action="instructions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a3 3 0 0 1 3-3h13v17H7a3 3 0 0 0-3 3V5Zm0 14a3 3 0 0 1 3-3h13"/></svg><span><strong>后台说明</strong><small>权限、数据范围与操作边界</small></span></button>
+    </nav>
+    <button class="drawer-logout" id="adminDrawerLogoutBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m11-9h6v18h-6"/></svg>退出后台</button>
+  </aside>
+
   <main class="admin-main">
     <section class="login-panel" id="loginPanel">
       <div class="login-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
       </div>
       <span class="eyebrow">受保护区域</span>
-      <h1>进入数据后台</h1>
-      <p>管理密钥只保存在本次浏览器会话中，不会写入网址或本地长期存储。</p>
+      <h1>进入运营与数据后台</h1>
+      <p>指定超级管理员账号会自动验证。下方管理密钥仅用于系统初始化或账号恢复，并只保存在本次浏览器会话中。</p>
       <label class="admin-field">
-        <span>管理密钥</span>
-        <input id="adminKeyInput" type="password" autocomplete="current-password" placeholder="输入管理密钥">
+        <span>备用管理密钥</span>
+        <input id="adminKeyInput" type="password" autocomplete="current-password" placeholder="仅在无法使用管理员账号时填写">
       </label>
       <button class="button primary login-button" id="loginBtn" type="button">验证并进入</button>
       <div class="login-error" id="loginError" role="alert"></div>
@@ -70,17 +96,34 @@
           <span>当前在线</span><strong id="activeNow">0</strong><small>近2分钟活跃会话</small>
         </article>
         <article class="metric-card">
-          <span>今日访问</span><strong id="todayViews">0</strong><small>页面浏览次数</small>
+          <span>今日访问人数</span><strong id="todaySessions">0</strong><small>匿名会话数</small>
         </article>
         <article class="metric-card">
-          <span>累计访问</span><strong id="totalViews">0</strong><small id="sessionSummary">0 个匿名会话</small>
+          <span>今日访问人次</span><strong id="todayViews">0</strong><small>页面浏览次数</small>
+        </article>
+        <article class="metric-card">
+          <span>累计访问人数</span><strong id="totalSessions">0</strong><small>匿名会话数</small>
+        </article>
+        <article class="metric-card">
+          <span>累计访问人次</span><strong id="totalViews">0</strong><small>页面浏览次数</small>
         </article>
         <article class="metric-card data-metric">
-          <span>云端评估</span><strong id="totalAssessments">0</strong><small>仅含授权同步记录</small>
+          <span>团队云端档案</span><strong id="totalAssessments">0</strong><small>登录成员自动同步</small>
         </article>
         <article class="metric-card">
           <span>今日新增评估</span><strong id="todayAssessments">0</strong><small>按首次同步时间统计</small>
         </article>
+      </section>
+
+      <section class="analytics-breakdown-grid">
+        <article class="chart-panel compact-breakdown"><div class="chart-heading"><div><span class="eyebrow">访问设备</span><h2>设备类型</h2></div></div><div class="breakdown-list" id="deviceBreakdown"></div></article>
+        <article class="chart-panel compact-breakdown"><div class="chart-heading"><div><span class="eyebrow">粗粒度地区</span><h2>访问地区</h2></div></div><div class="breakdown-list" id="regionBreakdown"></div></article>
+        <article class="chart-panel compact-breakdown"><div class="chart-heading"><div><span class="eyebrow">页面使用</span><h2>常用入口</h2></div></div><div class="breakdown-list" id="pathBreakdown"></div></article>
+      </section>
+
+      <section class="table-panel admin-feedback-panel" id="adminFeedbackPanel">
+        <div class="table-toolbar"><div class="admin-heading small"><span class="eyebrow">团队改进</span><h2>意见反馈</h2></div><span class="count-badge" id="adminOpenFeedbackCount">0</span></div>
+        <div class="admin-feedback-list" id="adminFeedbackList"></div>
       </section>
 
       <section class="team-bootstrap-panel" id="teamBootstrapPanel">
@@ -126,6 +169,11 @@
             <h2>评估档案</h2>
           </div>
           <div class="admin-filters">
+            <button class="button quiet recycle-bin-button" id="openRecycleBinBtn" type="button" title="查看30天内删除的评估报告">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
+              回收站
+              <span id="recycleBinCount">0</span>
+            </button>
             <label class="admin-filter search-admin">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
               <input id="recordSearch" type="search" placeholder="搜索编号、姓名或发展需要">
@@ -143,7 +191,7 @@
 
         <div class="table-scroll">
           <table class="data-table">
-            <thead><tr><th>学生标识</th><th>主要发展需要</th><th>评估日期</th><th>综合分</th><th>完成度</th><th>隐私模式</th><th>最后同步</th><th>操作</th></tr></thead>
+            <thead><tr><th>学生标识</th><th>主要发展需要</th><th>评估日期</th><th>功能观察均分</th><th>完成度</th><th>隐私模式</th><th>最后同步</th><th>操作</th></tr></thead>
             <tbody id="recordTableBody"></tbody>
           </table>
         </div>
@@ -151,7 +199,7 @@
       </section>
 
       <section class="privacy-footer">
-        <div><strong>访问数据</strong><span>仅记录匿名会话、时间、页面和设备类别，不保存IP地址。</span></div>
+        <div><strong>访问数据</strong><span>仅记录匿名会话、时间、页面、设备类别与Cloudflare粗粒度地区，不保存IP地址。</span></div>
         <div><strong>评估数据</strong><span>仅显示使用者主动授权同步的内容；去标识化记录不含姓名等直接身份字段。</span></div>
         <div><strong>刷新时间</strong><span id="sourceTimestamp">—</span></div>
       </section>
@@ -167,7 +215,7 @@
     </div>
     <div class="modal-body record-detail" id="recordDetail"></div>
     <div class="record-dialog-actions">
-      <button class="button danger" id="deleteCloudRecordBtn" type="button">删除此云端记录</button>
+      <button class="button danger" id="deleteCloudRecordBtn" type="button">移入回收站</button>
       <div class="record-action-group">
         <button class="button primary" id="exportRecordReportBtn" type="button" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
@@ -176,6 +224,42 @@
         <button class="button quiet close-record-dialog" type="button">关闭</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="modal trash-dialog" id="adminTrashDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">误删保护</span><h2>评估报告回收站</h2></div>
+      <button class="icon-button close-admin-trash" type="button" aria-label="关闭回收站">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body trash-dialog-body">
+      <p class="trash-retention-note">删除的评估报告保留 30 天，期间可恢复；到期后系统会自动永久删除。</p>
+      <div class="table-scroll">
+        <table class="data-table trash-table">
+          <thead><tr><th>学生</th><th>班级</th><th>评估日期</th><th>删除时间</th><th>删除人</th><th>剩余时间</th><th>操作</th></tr></thead>
+          <tbody id="adminTrashTableBody"></tbody>
+        </table>
+      </div>
+      <div class="table-empty" id="adminTrashEmpty" hidden>回收站为空</div>
+    </div>
+    <div class="record-dialog-actions">
+      <span class="trash-dialog-hint">永久删除仅适用于确认无用的测试报告，操作后无法恢复。</span>
+      <button class="button quiet close-admin-trash" type="button">关闭</button>
+    </div>
+  </dialog>
+
+  <dialog class="modal account-dialog" id="adminHelpDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">超级管理员专属</span><h2>后台使用说明</h2></div>
+      <button class="icon-button close-admin-help" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="modal-body admin-guidance-list">
+      <p><strong>访问数据</strong><span>只用于了解站点使用情况，地区为 Cloudflare 提供的粗粒度信息，不保存 IP 地址。</span></p>
+      <p><strong>评估数据</strong><span>后台可查看、导出和删除云端评估记录；测试报告优先移入回收站，30天内可恢复。</span></p>
+      <p><strong>权限边界</strong><span>部门管理员负责成员、名单与日常协作；运营与数据后台只对指定超级管理员开放。</span></p>
+    </div>
+    <div class="modal-actions"><button class="button primary close-admin-help" type="button">知道了</button></div>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

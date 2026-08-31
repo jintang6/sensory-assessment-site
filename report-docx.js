@@ -1,7 +1,7 @@
 const REPORT_WIDTH = 9360;
 const TABLE_INDENT = 120;
 const FONT_LATIN = "Arial";
-const FONT_CJK = "Heiti SC";
+const FONT_CJK = "Noto Sans SC Thin";
 const COLORS = {
   ink: "1F2A33",
   soft: "53616C",
@@ -18,6 +18,12 @@ const COLORS = {
   tableFill: "F2F4F7",
   white: "FFFFFF"
 };
+const PROFESSIONAL_MODULES = [
+  { id: "si", label: "感觉统合 SI" },
+  { id: "ot", label: "作业治疗 OT" },
+  { id: "st", label: "言语语言 ST" },
+  { id: "pt", label: "运动功能 / PT" }
+];
 
 function valueOr(value, fallback = "未填写") {
   const text = String(value ?? "").trim();
@@ -45,16 +51,40 @@ function safeFilename(value) {
 function reportNumber(row, record) {
   const date = String(record.assessmentDate || "").replaceAll("-", "") || new Date().toISOString().slice(0, 10).replaceAll("-", "");
   const identity = String(record.studentCode || row?.id || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(-10) || "REPORT";
-  return `ZH-SI-${date}-${identity}`;
+  return `ZH-FR-${date}-${identity}`;
 }
 
 export function assessmentReportFilename(row) {
   const record = row?.assessment || {};
   const title = row?.student_label || record.studentName || record.studentCode || "未命名学生";
-  return `${safeFilename(title)}-感觉统合功能评估报告.docx`;
+  return `${safeFilename(title)}-学生功能评估与康复支持报告.docx`;
 }
 
-export function buildAssessmentReportDocument(row, api) {
+export function loadReportFontData() {
+  return fetch("./assets/NotoSansSC-Regular-GB2312.ttf")
+    .then((response) => {
+      if (!response.ok) throw new Error("报告中文字体加载失败");
+      return response.arrayBuffer();
+    })
+    .then((buffer) => new Uint8Array(buffer))
+    .catch(() => null);
+}
+
+function reportFonts(fontData) {
+  return fontData
+    ? [{ name: FONT_CJK, data: fontData, characterSet: "86" }]
+    : [];
+}
+
+function normalizeHeaderSettings(documentFile) {
+  const settings = documentFile?.Settings?.root;
+  if (!Array.isArray(settings)) return documentFile;
+  const index = settings.findIndex((item) => item?.rootKey === "w:evenAndOddHeaders");
+  if (index >= 0) settings.splice(index, 1);
+  return documentFile;
+}
+
+export function buildAssessmentReportDocument(row, api, fontData = null) {
   const {
     AlignmentType,
     BorderStyle,
@@ -63,6 +93,7 @@ export function buildAssessmentReportDocument(row, api) {
     Header,
     LevelFormat,
     LineRuleType,
+    PageBreak,
     PageNumber,
     PageOrientation,
     Packer,
@@ -82,7 +113,7 @@ export function buildAssessmentReportDocument(row, api) {
   const record = row?.assessment || {};
   const analysis = row?.analysis || {};
   const title = row?.student_label || record.studentName || record.studentCode || "评估记录";
-  const organizationName = valueOr(record.organizationName, "知衡特殊教育康复评估");
+  const organizationName = valueOr(record.organizationName, "知衡学生功能评估与康复支持");
   const documentNumber = reportNumber(row, record);
   const privacyMode = row?.identity_scope === "restricted_roster"
     ? "团队受限名单关联记录"
@@ -118,9 +149,10 @@ export function buildAssessmentReportDocument(row, api) {
     spacing: options.spacing
   });
 
-  const heading = (text) => new Paragraph({
+  const heading = (text, options = {}) => new Paragraph({
     children: [run(text, { size: 32, bold: true, color: COLORS.navy })],
     style: "ReportHeading1",
+    pageBreakBefore: Boolean(options.pageBreakBefore),
     border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: COLORS.teal } }
   });
 
@@ -129,6 +161,8 @@ export function buildAssessmentReportDocument(row, api) {
     "report-alerts",
     "report-strengths",
     "report-needs",
+    "report-courses",
+    "report-course-notes",
     "report-goals",
     "report-strategies"
   ];
@@ -158,8 +192,8 @@ export function buildAssessmentReportDocument(row, api) {
   const metadataRows = [
     [["学生标识", title], ["学生编号", record.studentCode], ["报告编号", documentNumber]],
     [["年龄", record.age], ["性别", record.gender], ["班级", record.className]],
-    [["主要发展需要", record.primaryNeed], ["评估人", record.evaluator], ["评估日期", record.assessmentDate]],
-    [["主要情境", record.setting], ["综合分", analysis.average == null ? "—" : Number(analysis.average).toFixed(1)], ["完成度", `${Number(analysis.coverage) || 0}%`]],
+    [["主要发展需要", record.primaryNeed], ["报告统筹人", record.evaluator], ["评估日期", record.assessmentDate]],
+    [["主要情境", record.setting], ["功能观察均分", analysis.average == null ? "—" : Number(analysis.average).toFixed(1)], ["完成度", `${Number(analysis.coverage) || 0}%`]],
     [["沟通方式", record.communicationMode], ["移动能力", record.mobility], ["分析可信度", analysis.confidence]]
   ].map((cells) => new TableRow({
     cantSplit: true,
@@ -191,7 +225,7 @@ export function buildAssessmentReportDocument(row, api) {
     rows: [new TableRow({
       cantSplit: true,
       children: [
-        signatureCell("评估人签名", record.evaluator),
+        signatureCell("报告统筹人签名", record.evaluator),
         signatureCell("复核人签名", record.reviewer),
         signatureCell("机构盖章", "")
       ]
@@ -204,11 +238,58 @@ export function buildAssessmentReportDocument(row, api) {
     margins: cellMargins
   });
 
-  const domainWidths = [1900, 720, 780, 1100, 1350, 3510];
-  const domainHeader = new TableRow({
+  const assessorWidths = [2100, 2600, 1600, 3060];
+  const assessorRows = [new TableRow({
     tableHeader: true,
     cantSplit: true,
-    children: ["领域", "均分", "项目", "参与影响", "当前支持", "观察记录"].map((label, index) => new TableCell({
+    children: ["专业模块", "评估人员（最近提交）", "评估日期", "模块完成情况"].map((label, index) => new TableCell({
+      width: { size: assessorWidths[index], type: WidthType.DXA },
+      margins: cellMargins,
+      shading: { fill: COLORS.tealSoft, type: ShadingType.CLEAR },
+      children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [run(label, { size: 20, bold: true, color: COLORS.tealDark })] })]
+    }))
+  })];
+  PROFESSIONAL_MODULES.forEach((module) => {
+    const assessor = record.professionalAssessors?.[module.id] || {};
+    const readiness = analysis.moduleReadiness?.[module.id] || {};
+    const contributors = Array.from(new Set([...(assessor.contributors || []), assessor.evaluator].filter(Boolean)));
+    const assessorLabel = contributors.length
+      ? `${contributors.join("、")}${assessor.evaluator ? `（最近：${assessor.evaluator}）` : ""}`
+      : "未填写";
+    assessorRows.push(new TableRow({
+      cantSplit: true,
+      children: [
+        module.label,
+        assessorLabel,
+        valueOr(assessor.assessmentDate),
+        `${Number(readiness.validDomainCount) || 0}/${Number(readiness.totalDomainCount) || 0}个有效领域 · ${Number(readiness.coverage) || 0}%${readiness.ready ? " · 可用于分流" : ` · 待补评（门槛${Number(readiness.requiredDomainCount) || 0}个）`}`
+      ].map((value, index) => new TableCell({
+        width: { size: assessorWidths[index], type: WidthType.DXA },
+        margins: cellMargins,
+        verticalAlign: VerticalAlign.CENTER,
+        children: [new Paragraph({ alignment: index === 0 || index === 2 ? AlignmentType.CENTER : AlignmentType.LEFT, spacing: { after: 0 }, children: [run(value, { size: 20, bold: index === 0 })] })]
+      }))
+    }));
+  });
+  const assessorTable = new Table({
+    rows: assessorRows,
+    width: { size: REPORT_WIDTH, type: WidthType.DXA },
+    indent: { size: TABLE_INDENT, type: WidthType.DXA },
+    columnWidths: assessorWidths,
+    layout: TableLayoutType.FIXED,
+    borders: tableBorders,
+    margins: cellMargins
+  });
+
+  const courseLines = Array.isArray(analysis.courseRecommendations) && analysis.courseRecommendations.length
+    ? analysis.courseRecommendations.map((item) => `${valueOr(item.priorityLabel, "建议")}：${valueOr(item.title)}。${valueOr(item.rationale, "")}建议聚焦：${valueOr(item.focus)}。`)
+    : [valueOr(analysis.courseRecommendationNotes?.[0], "当前尚未形成个训课分流建议。")];
+
+  const domainWidths = [1450, 600, 700, 800, 1000, 1250, 3560];
+  const createDomainHeader = () => new TableRow({
+    tableHeader: true,
+    cantSplit: true,
+    children: ["领域", "专业", "均分", "项目", "参与影响", "当前支持", "观察记录"].map((label, index) => new TableCell({
       width: { size: domainWidths[index], type: WidthType.DXA },
       margins: cellMargins,
       shading: { fill: COLORS.blueSoft, type: ShadingType.CLEAR },
@@ -226,6 +307,7 @@ export function buildAssessmentReportDocument(row, api) {
     const score = Number(domain?.score);
     const values = [
       valueOr(domain?.title, id),
+      valueOr(String(domain?.professional || detail.professional || "").toUpperCase(), "—"),
       Number.isFinite(score) ? score.toFixed(1) : "—",
       `${Number(domain?.answered) || 0}项`,
       impactLabels[Number(domain?.impact) || 0] || impactLabels[0],
@@ -239,24 +321,25 @@ export function buildAssessmentReportDocument(row, api) {
         margins: cellMargins,
         verticalAlign: VerticalAlign.CENTER,
         children: [new Paragraph({
-          alignment: index >= 1 && index <= 3 ? AlignmentType.CENTER : AlignmentType.LEFT,
+          alignment: index >= 1 && index <= 4 ? AlignmentType.CENTER : AlignmentType.LEFT,
           spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO },
-          children: [run(value, { size: 20, color: index === 1 ? COLORS.tealDark : COLORS.ink, bold: index === 1 })]
+          children: [run(value, { size: 20, color: index === 2 ? COLORS.tealDark : COLORS.ink, bold: index === 2 })]
         })]
       }))
     });
   });
 
-  const domainTable = new Table({
-    rows: [domainHeader, ...(domainRows.length ? domainRows : [new TableRow({
+  const emptyDomainRow = () => new TableRow({
       cantSplit: true,
       children: [new TableCell({
-        columnSpan: 6,
+        columnSpan: 7,
         width: { size: REPORT_WIDTH, type: WidthType.DXA },
         margins: cellMargins,
         children: [bodyParagraph("暂无有效领域", { alignment: AlignmentType.CENTER })]
       })]
-    })])],
+    });
+  const createDomainTable = (rows) => new Table({
+    rows: [createDomainHeader(), ...(rows.length ? rows : [emptyDomainRow()])],
     width: { size: REPORT_WIDTH, type: WidthType.DXA },
     indent: { size: TABLE_INDENT, type: WidthType.DXA },
     columnWidths: domainWidths,
@@ -264,8 +347,18 @@ export function buildAssessmentReportDocument(row, api) {
     borders: tableBorders,
     margins: cellMargins
   });
+  const domainChunks = [];
+  if (domainRows.length) {
+    for (let index = 0; index < domainRows.length; index += 4) domainChunks.push(domainRows.slice(index, index + 4));
+  } else {
+    domainChunks.push([]);
+  }
+  const domainSectionGroups = domainChunks.map((rows, index) => [
+    heading(index === 0 ? "十一、领域表现与观察记录" : "十一、领域表现与观察记录（续）"),
+    createDomainTable(rows)
+  ]);
 
-  const header = new Header({
+  const createHeader = () => new Header({
     children: [new Paragraph({
       alignment: AlignmentType.LEFT,
       spacing: { after: 0 },
@@ -277,7 +370,7 @@ export function buildAssessmentReportDocument(row, api) {
     })]
   });
 
-  const footer = new Footer({
+  const createFooter = () => new Footer({
     children: [new Paragraph({
       alignment: AlignmentType.RIGHT,
       spacing: { before: 0, after: 0 },
@@ -290,8 +383,7 @@ export function buildAssessmentReportDocument(row, api) {
       ]
     })]
   });
-
-  const children = [
+  const introChildren = [
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 80, after: 180 },
@@ -300,7 +392,7 @@ export function buildAssessmentReportDocument(row, api) {
     new Paragraph({
       style: "ReportTitle",
       alignment: AlignmentType.CENTER,
-      children: [run("感觉统合功能评估报告", { size: 46, bold: true, color: COLORS.ink })]
+      children: [run("学生功能评估与康复支持报告", { size: 43, bold: true, color: COLORS.ink })]
     }),
     new Paragraph({
       style: "ReportSubtitle",
@@ -316,40 +408,52 @@ export function buildAssessmentReportDocument(row, api) {
       style: "ReportCallout",
       border: { left: { style: BorderStyle.SINGLE, size: 16, color: COLORS.gold } },
       shading: { fill: COLORS.goldSoft, type: ShadingType.CLEAR },
-      children: [run("报告使用说明：本报告由功能性观察数据自动整理，供教育康复团队制定和复核个别化支持计划使用；不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。", { size: 22, color: COLORS.navy })]
+      children: [run("报告使用说明：本报告由多专业学校场景功能性观察数据自动整理，供团队制定目标与复核服务分流使用；不是标准化常模量表，不能替代医学诊断或各专业完整评估。", { size: 22, color: COLORS.navy })]
     }),
     metadataTable,
     heading("一、评估目的与方法"),
-    bodyParagraph(`评估目的：描述${title}在${valueOr(record.setting, "学校与康复情境")}中的感觉调节、感觉运动和活动参与表现，识别相对优势与优先支持需要，并形成可测量的阶段目标。`),
+    bodyParagraph(`评估目的：描述${title}在${valueOr(record.setting, "学校与康复情境")}中的感觉调节、日常活动、沟通和运动功能表现，识别相对优势与优先支持需要，并形成可测量目标及跨专业分流建议。`),
     bodyParagraph(`资料来源：${Array.isArray(record.observationSources) && record.observationSources.length ? record.observationSources.join("、") : "未记录"}。评分反映学生在当前支持条件下完成可观察任务的程度，并结合参与影响、支持等级与具体观察解释。`),
-    heading("二、评估摘要"),
+    heading("二、多专业评估分工与完成情况"),
+    assessorTable,
+    heading("三、评估摘要"),
     bodyParagraph(valueOr(analysis.summary, "尚未形成有效摘要。")),
-    heading("三、个别化分析依据"),
+    heading("四、个别化分析依据"),
     ...numberedList(analysis.basis, "report-basis"),
-    heading("四、背景与安全信息"),
+    heading("五、背景与安全信息"),
     bodyParagraph(`主要关切：${valueOr(record.background, "未填写或已去标识化")}`),
     bodyParagraph(`医疗与安全注意事项：${valueOr(record.medicalPrecautions, "未填写或已去标识化")}`),
     ...numberedList(analysis.alerts, "report-alerts"),
-    heading("五、相对优势"),
+    heading("六、相对优势"),
     ...numberedList(analysis.strengths, "report-strengths"),
-    heading("六、优先支持需要"),
-    ...numberedList(analysis.needs, "report-needs"),
-    heading("七、8周阶段目标"),
-    ...numberedList(analysis.goals, "report-goals"),
-    heading("八、康复、课堂与生活支持"),
-    ...numberedList(analysis.strategies, "report-strategies"),
-    heading("九、领域表现与观察记录"),
-    domainTable,
+    heading("七、优先支持需要"),
+    ...numberedList(analysis.needs, "report-needs")
+  ];
+  const recommendationChildren = [
+    heading("八、个训课分流建议"),
+    ...numberedList(courseLines, "report-courses"),
+    ...numberedList(analysis.courseRecommendationNotes, "report-course-notes"),
+    heading("九、8周阶段目标"),
+    ...numberedList(analysis.goals, "report-goals")
+  ];
+  const strategyChildren = [
+    heading("十、康复、课堂与生活支持"),
+    ...numberedList(analysis.strategies, "report-strategies")
+  ];
+  const domainNotes = [
     new Paragraph({
       style: "ReportNote",
-      children: [run("评分说明：1=全程协助，2=大量协助，3=部分提示，4=少量提示，5=独立稳定。每个领域至少完成3项才形成领域分，结果应结合多情境观察、家庭优先事项和跨专业资料解释。", { size: 20, color: COLORS.faint })]
+      children: [run("评分说明：1=全程协助，2=大量协助，3=部分提示，4=少量提示，5=独立稳定。每个领域至少完成60%的项目才形成领域分，结果应结合多情境观察、家庭优先事项和跨专业资料解释。", { size: 20, color: COLORS.faint })]
     }),
     new Paragraph({
       style: "ReportNote",
       children: [run(`文档生成时间：${formatDateTime(new Date().toISOString())}`, { size: 20, color: COLORS.faint })]
-    }),
-    heading("十、专业人员确认"),
-    bodyParagraph("评估人与复核人应结合原始观察记录、家庭和教师意见及必要的跨专业资料，对本报告结论与目标进行确认。"),
+    })
+  ];
+  domainSectionGroups[domainSectionGroups.length - 1].push(...domainNotes);
+  const confirmationChildren = [
+    heading("十二、专业人员确认"),
+    bodyParagraph("各模块主评人、报告统筹人与复核人应结合原始观察记录、家庭和教师意见及必要的跨专业资料，对本报告结论、目标和个训分流建议进行确认。"),
     signatureTable,
     new Paragraph({
       style: "ReportNote",
@@ -357,13 +461,29 @@ export function buildAssessmentReportDocument(row, api) {
       children: [run("本报告包含学生教育康复信息，请按照机构隐私制度妥善保管和传递。", { size: 18, color: COLORS.faint })]
     })
   ];
+  const pageProperties = {
+    size: { width: 12240, height: 15840, orientation: PageOrientation.PORTRAIT },
+    margin: { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 708, footer: 708 }
+  };
+  const pageBreak = () => new Paragraph({ children: [new PageBreak()] });
+  const reportChildren = [
+    ...introChildren,
+    pageBreak(),
+    ...recommendationChildren,
+    pageBreak(),
+    ...strategyChildren,
+    ...domainSectionGroups.flatMap((group) => [pageBreak(), ...group]),
+    pageBreak(),
+    ...confirmationChildren
+  ];
 
-  return new Document({
-    creator: "知衡感觉统合评估系统",
-    lastModifiedBy: "知衡感觉统合评估系统",
-    title: `${title} 感觉统合功能评估报告`,
-    subject: "学校与康复场景功能性观察报告",
-    description: "由授权同步的感觉统合功能评估数据生成。",
+  const documentFile = new Document({
+    fonts: reportFonts(fontData),
+    creator: "知衡学生功能评估与康复支持平台",
+    lastModifiedBy: "知衡学生功能评估与康复支持平台",
+    title: `${title} 学生功能评估与康复支持报告`,
+    subject: "多专业学校与康复场景功能性观察报告",
+    description: "由授权同步的多专业功能评估数据生成。",
     styles: {
       default: {
         document: {
@@ -456,17 +576,13 @@ export function buildAssessmentReportDocument(row, api) {
       }))
     },
     sections: [{
-      properties: {
-        page: {
-          size: { width: 12240, height: 15840, orientation: PageOrientation.PORTRAIT },
-          margin: { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 708, footer: 708 }
-        }
-      },
-      headers: { default: header },
-      footers: { default: footer },
-      children
+      properties: { page: pageProperties },
+      headers: { default: createHeader(), even: createHeader() },
+      footers: { default: createFooter(), even: createFooter() },
+      children: reportChildren
     }]
   });
+  return normalizeHeaderSettings(documentFile);
 }
 
 export function studentProgressFilename(profile) {
@@ -474,7 +590,7 @@ export function studentProgressFilename(profile) {
   return `${safeFilename(student.student_name || student.student_code)}-阶段康复档案.docx`;
 }
 
-export function buildStudentProgressDocument(profile, api) {
+export function buildStudentProgressDocument(profile, api, fontData = null) {
   const {
     AlignmentType,
     BorderStyle,
@@ -570,11 +686,11 @@ export function buildStudentProgressDocument(profile, api) {
   const metadataTable = table([
     new TableRow({ children: [cell("学生姓名", 1560, { header: true }), cell(student.student_name, 1560), cell("班级", 1560, { header: true }), cell(student.class_name, 1560), cell("内部编号", 1560, { header: true }), cell(student.student_code, 1560)] }),
     new TableRow({ children: [cell("年级", 1560, { header: true }), cell(student.grade_name, 1560), cell("学年", 1560, { header: true }), cell(student.school_year, 1560), cell("报告编号", 1560, { header: true }), cell(documentNumber, 1560, { size: 17 })] }),
-    new TableRow({ children: [cell("最近评估", 1560, { header: true }), cell(record.assessmentDate, 1560), cell("最近综合分", 1560, { header: true }), cell(analysis.average == null ? "—" : Number(analysis.average).toFixed(1), 1560, { center: true, bold: true }), cell("执行中目标", 1560, { header: true }), cell(String(profile?.metrics?.activeGoalCount || 0), 1560, { center: true, bold: true })] })
+    new TableRow({ children: [cell("最近评估", 1560, { header: true }), cell(record.assessmentDate, 1560), cell("功能观察均分", 1560, { header: true }), cell(analysis.average == null ? "—" : Number(analysis.average).toFixed(1), 1560, { center: true, bold: true }), cell("执行中目标", 1560, { header: true }), cell(String(profile?.metrics?.activeGoalCount || 0), 1560, { center: true, bold: true })] })
   ], metadataWidths);
 
   const assessmentWidths = [1900, 1250, 1250, 3760, 1200];
-  const assessmentRows = [new TableRow({ tableHeader: true, children: ["评估日期", "综合分", "完成度", "已形成领域", "版本"].map((label, index) => cell(label, assessmentWidths[index], { header: true, center: true })) })];
+  const assessmentRows = [new TableRow({ tableHeader: true, children: ["评估日期", "功能观察均分", "完成度", "已形成领域", "版本"].map((label, index) => cell(label, assessmentWidths[index], { header: true, center: true })) })];
   assessmentPoints.slice(-20).reverse().forEach((item) => assessmentRows.push(new TableRow({ children: [
     cell(item.assessmentDate, assessmentWidths[0], { center: true }),
     cell(item.score == null ? "—" : Number(item.score).toFixed(1), assessmentWidths[1], { center: true, bold: true }),
@@ -608,14 +724,16 @@ export function buildStudentProgressDocument(profile, api) {
   ] })));
   if (logRows.length === 1) logRows.push(new TableRow({ children: [new TableCell({ columnSpan: 6, margins, children: [paragraph("尚无干预记录", { alignment: AlignmentType.CENTER })] })] }));
 
-  const header = new Header({ children: [new Paragraph({
+  const createHeader = () => new Header({ children: [new Paragraph({
     border: { bottom: { style: BorderStyle.SINGLE, size: 5, color: COLORS.line } },
     children: [run(organizationName, { size: 20, bold: true, color: COLORS.navy }), run("    |    学生阶段康复档案 · 保密文件", { size: 18, color: COLORS.faint })]
   })] });
-  const footer = new Footer({ children: [new Paragraph({
+  const createFooter = () => new Footer({ children: [new Paragraph({
     alignment: AlignmentType.RIGHT,
     children: [run("仅供获授权的校内教育康复团队使用    第 ", { size: 18, color: COLORS.faint }), new TextRun({ children: [PageNumber.CURRENT], font, size: 18, color: COLORS.faint }), run(" 页，共 ", { size: 18, color: COLORS.faint }), new TextRun({ children: [PageNumber.TOTAL_PAGES], font, size: 18, color: COLORS.faint }), run(" 页", { size: 18, color: COLORS.faint })]
   })] });
+  const header = createHeader();
+  const footer = createFooter();
 
   const children = [
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [run(organizationName, { size: 25, bold: true, color: COLORS.navy })] }),
@@ -650,9 +768,10 @@ export function buildStudentProgressDocument(profile, api) {
     paragraph("本档案包含学生教育康复信息，请按照学校隐私制度妥善保管和传递。", { style: "ProgressNote", alignment: AlignmentType.CENTER })
   ];
 
-  return new Document({
-    creator: "知衡感觉统合评估系统",
-    lastModifiedBy: "知衡感觉统合评估系统",
+  const documentFile = new Document({
+    fonts: reportFonts(fontData),
+    creator: "知衡学生功能评估与康复支持平台",
+    lastModifiedBy: "知衡学生功能评估与康复支持平台",
     title: `${student.student_name || student.student_code || "学生"} 阶段康复档案`,
     subject: "校内教育康复阶段档案",
     description: "由授权学生名单、去标识化评估和结构化干预记录生成。",
@@ -673,4 +792,5 @@ export function buildStudentProgressDocument(profile, api) {
       children
     }]
   });
+  return normalizeHeaderSettings(documentFile);
 }

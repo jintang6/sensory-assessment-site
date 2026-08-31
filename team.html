@@ -3,20 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>知衡 · 团队工作台</title>
-  <meta name="description" content="本校康复评估部门的邀请制学生名单与去标识化评估协作工作台。">
+  <title>知衡 · 多专业康复团队工作台</title>
+  <meta name="description" content="本校康复部门的邀请制学生名单、多专业功能评估与去标识化协作工作台。">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./team.css">
 </head>
 <body class="team-body">
   <header class="app-header team-header">
-    <div class="brand-block">
+    <button class="brand-block brand-menu-trigger" id="teamMenuBtn" type="button" aria-label="打开账号与功能菜单" aria-expanded="false" aria-controls="teamDrawer">
+      <svg class="brand-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       <div class="brand-mark" aria-hidden="true"><span>知</span><i></i></div>
       <div>
         <div class="brand-line"><h1>知衡</h1><span class="product-label">团队工作台</span></div>
         <p id="teamHeaderSubtitle">本校单部门 · 邀请制协作</p>
       </div>
-    </div>
+    </button>
     <nav class="header-actions" aria-label="团队工作台操作">
       <a class="button quiet" href="./index.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
@@ -30,6 +31,34 @@
       </button>
     </nav>
   </header>
+
+  <button class="drawer-backdrop" id="teamDrawerBackdrop" type="button" aria-label="关闭侧栏" hidden></button>
+  <aside class="app-drawer" id="teamDrawer" aria-label="账号与功能导航" aria-hidden="true">
+    <div class="drawer-account">
+      <div class="drawer-avatar" id="teamDrawerAvatar">知</div>
+      <div><strong id="teamDrawerUserName">未登录</strong><span id="teamDrawerUserRole">团队工作台</span><small id="teamDrawerUserEmail">请先登录账号</small></div>
+      <button class="icon-button" id="closeTeamDrawerBtn" type="button" aria-label="关闭侧栏"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <p class="drawer-assignment" id="teamDrawerAssignment">登录后显示专业分工与团队权限。</p>
+    <nav class="drawer-nav" aria-label="专业评估入口">
+      <span>专业评估</span>
+      <a href="./" data-team-drawer-module="si"><b>SI</b><span><strong>感觉统合评估</strong><small>感觉调节、身体觉与活动状态</small></span></a>
+      <a href="./ot/" data-team-drawer-module="ot"><b>OT</b><span><strong>作业治疗评估</strong><small>自理、操作与任务参与</small></span></a>
+      <a href="./st/" data-team-drawer-module="st"><b>ST</b><span><strong>言语语言评估</strong><small>语言、沟通与口腔参与</small></span></a>
+      <a href="./movement/" data-team-drawer-module="pt"><b>PT</b><span><strong>运动功能评估</strong><small>姿势、移动、平衡与耐力</small></span></a>
+    </nav>
+    <nav class="drawer-nav drawer-system-nav" aria-label="团队功能">
+      <span>团队与支持</span>
+      <button type="button" data-team-drawer-tab="roster"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2"/><path d="M3 20a6 6 0 0 1 12 0m0-4a4 4 0 0 1 6 3.5"/></svg><span><strong>学生管理</strong><small>名单、目标与康复进度</small></span></button>
+      <button type="button" data-team-drawer-tab="records"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5"/></svg><span><strong>评估档案</strong><small>云端报告、版本与回收站</small></span></button>
+      <button type="button" data-team-drawer-tab="members" id="teamDrawerMembersLink" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M2 20a6 6 0 0 1 12 0m1-4a4 4 0 0 1 7 3"/></svg><span><strong>成员与邀请</strong><small>账号、角色和密码重置</small></span></button>
+      <a href="./admin.html" id="teamDrawerAdminLink" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg><span><strong>运营与数据后台</strong><small>仅超级管理员可查看</small></span></a>
+      <button type="button" data-team-drawer-action="instructions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a3 3 0 0 1 3-3h13v17H7a3 3 0 0 0-3 3V5Zm0 14a3 3 0 0 1 3-3h13"/></svg><span><strong>使用说明</strong><small>协作流程、评分规范与隐私边界</small></span></button>
+      <button type="button" data-team-drawer-action="feedback"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"/></svg><span><strong>意见反馈</strong><small>提交内容、流程或故障建议</small></span></button>
+      <button type="button" data-team-drawer-action="account" id="teamDrawerAccountLink" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span><strong>账号与密码</strong><small>查看身份与修改密码</small></span></button>
+    </nav>
+    <button class="drawer-logout" id="teamDrawerLogoutBtn" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m11-9h6v18h-6"/></svg>退出登录</button>
+  </aside>
 
   <main class="team-main">
     <section class="auth-layout" id="authView">
@@ -73,6 +102,20 @@
         <div class="form-error" id="registerError" role="alert"></div>
         <button class="text-button" id="backToLoginBtn" type="button">返回成员登录</button>
       </section>
+
+      <section class="auth-panel forced-password-panel" id="forcedPasswordPanel" hidden>
+        <span class="eyebrow">首次登录安全设置</span>
+        <h2>请先修改初始密码</h2>
+        <p id="forcedPasswordIdentity">管理员为你创建了临时账号。完成改密前不能进入评估与学生档案。</p>
+        <form id="forcedPasswordForm">
+          <label class="team-field"><span>当前临时密码</span><input id="forcedCurrentPassword" type="password" autocomplete="current-password" required></label>
+          <label class="team-field"><span>设置新密码</span><input id="forcedNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="至少12个字符"></label>
+          <label class="team-field"><span>确认新密码</span><input id="forcedNewPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+          <p class="form-note">建议使用与其他网站不同的长密码；修改后，临时密码立即失效。</p>
+          <div class="form-error" id="forcedPasswordError" role="alert"></div>
+          <button class="button primary auth-submit" type="submit">更新密码并进入</button>
+        </form>
+      </section>
     </section>
 
     <section class="team-dashboard" id="dashboardView" hidden>
@@ -99,6 +142,7 @@
         <button class="active" type="button" data-team-tab="roster">学生名单</button>
         <button type="button" data-team-tab="records">评估档案</button>
         <button type="button" data-team-tab="members" id="membersTabBtn" hidden>成员与邀请</button>
+        <button type="button" data-team-tab="feedback" id="feedbackTabBtn" hidden>意见反馈</button>
         <button type="button" data-team-tab="audit" id="auditTabBtn" hidden>审计记录</button>
       </nav>
 
@@ -148,14 +192,21 @@
           <section class="team-panel record-panel">
             <div class="panel-toolbar">
               <div><span class="eyebrow">学生协作档案</span><h2>最近评估</h2></div>
-              <label class="team-search">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-                <input id="teamRecordSearch" type="search" placeholder="搜索姓名、班级、协作编号或发展需要">
-              </label>
+              <div class="record-toolbar-actions">
+                <button class="button quiet recycle-bin-button" id="openTeamTrashBtn" type="button" title="查看30天内删除的评估报告" hidden>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
+                  回收站
+                  <span id="teamTrashCount">0</span>
+                </button>
+                <label class="team-search">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                  <input id="teamRecordSearch" type="search" placeholder="搜索姓名、班级、协作编号或发展需要">
+                </label>
+              </div>
             </div>
             <div class="team-table-scroll">
               <table class="team-table">
-                <thead><tr><th>学生</th><th>班级</th><th>主要发展需要</th><th>评估日期</th><th>综合分</th><th>完成度</th><th>版本</th><th>最后更新</th><th>操作</th></tr></thead>
+                <thead><tr><th>学生</th><th>班级</th><th>主要发展需要</th><th>评估日期</th><th>功能观察均分</th><th>完成度</th><th>版本</th><th>最后更新</th><th>操作</th></tr></thead>
                 <tbody id="teamRecordTableBody"></tbody>
               </table>
             </div>
@@ -195,10 +246,17 @@
           <div class="panel-toolbar"><div><span class="eyebrow">部门账号</span><h2>成员与权限</h2></div><p>停用账号会立即撤销其现有登录会话。</p></div>
           <div class="team-table-scroll">
             <table class="team-table member-table">
-              <thead><tr><th>成员</th><th>邮箱</th><th>角色</th><th>状态</th><th>最近活跃</th><th>操作</th></tr></thead>
+              <thead><tr><th>成员</th><th>登录邮箱</th><th>角色</th><th>专业组</th><th>状态</th><th>账号安全</th><th>最近活跃</th><th>操作</th></tr></thead>
               <tbody id="memberTableBody"></tbody>
             </table>
           </div>
+        </section>
+      </section>
+
+      <section class="team-tab-panel" data-team-panel="feedback">
+        <section class="team-panel feedback-admin-panel">
+          <div class="panel-toolbar"><div><span class="eyebrow">团队改进</span><h2>成员意见反馈</h2></div><p><span class="count-badge" id="openFeedbackCount">0</span> 条待处理</p></div>
+          <div class="feedback-admin-list" id="feedbackAdminList"></div>
         </section>
       </section>
 
@@ -225,11 +283,32 @@
     </div>
     <div class="modal-body team-record-detail" id="teamRecordDetail"></div>
     <div class="team-dialog-actions">
-      <button class="button danger" id="deleteTeamRecordBtn" type="button" hidden>移入已删除记录</button>
+      <button class="button danger" id="deleteTeamRecordBtn" type="button" hidden>移入回收站</button>
       <div>
         <button class="button quiet" id="exportTeamDocxBtn" type="button">导出 DOCX</button>
         <button class="button primary" id="openInAssessmentBtn" type="button">在评估台继续</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal team-trash-dialog" id="teamTrashDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">误删保护</span><h2>评估报告回收站</h2></div>
+      <button class="icon-button close-team-trash" type="button" aria-label="关闭回收站"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="modal-body trash-dialog-body">
+      <p class="trash-retention-note">删除的评估报告保留 30 天，期间可恢复；到期后系统会自动永久删除。</p>
+      <div class="team-table-scroll">
+        <table class="team-table trash-table">
+          <thead><tr><th>学生</th><th>班级</th><th>评估日期</th><th>删除时间</th><th>删除人</th><th>剩余时间</th><th>操作</th></tr></thead>
+          <tbody id="teamTrashTableBody"></tbody>
+        </table>
+      </div>
+      <div class="team-empty" id="teamTrashEmpty" hidden>回收站为空</div>
+    </div>
+    <div class="team-dialog-actions">
+      <span class="trash-dialog-hint">永久删除仅适用于确认无用的测试报告，操作后无法恢复。</span>
+      <button class="button quiet close-team-trash" type="button">关闭</button>
     </div>
   </dialog>
 
@@ -240,7 +319,7 @@
     </div>
     <div class="modal-body student-profile-body">
       <div class="profile-metrics" aria-label="学生康复指标">
-        <div><span>最近综合分</span><strong id="profileLatestScore">—</strong><small id="profileLatestDate">尚无评估</small></div>
+        <div><span>最近功能观察均分</span><strong id="profileLatestScore">—</strong><small id="profileLatestDate">尚无评估</small></div>
         <div><span>评估次数</span><strong id="profileAssessmentCount">0</strong><small>含历次复评</small></div>
         <div><span>执行中目标</span><strong id="profileActiveGoalCount">0</strong><small>当前阶段</small></div>
         <div><span>待复核</span><strong id="profileDueGoalCount">0</strong><small>逾期或7日内到期</small></div>
@@ -382,6 +461,50 @@
       <div class="form-error" id="passwordError" role="alert"></div>
       <div class="modal-actions"><button class="button quiet close-account-dialog" type="button">取消</button><button class="button primary" type="submit">更新密码</button></div>
     </form>
+  </dialog>
+
+  <dialog class="modal account-dialog" id="teamHelpDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">团队操作规范</span><h2>使用说明</h2></div>
+      <button class="icon-button close-team-help" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="modal-body team-guidance-list">
+      <ol>
+        <li><strong>先确认学生</strong><span>从授权名单进入学生主页，核对班级和内部协作编号后再开始评估。</span></li>
+        <li><strong>按专业分工填写</strong><span>系统会自动记录评估账号和修改人；只填写已授权的专业模块。</span></li>
+        <li><strong>以可观察表现评分</strong><span>结合真实活动、环境支持和提示程度，不把单次表现当作诊断结论。</span></li>
+        <li><strong>保存后及时复核</strong><span>检查优势、优先需要、阶段目标和课程建议，再用于团队讨论。</span></li>
+        <li><strong>遵守隐私边界</strong><span>自由文本中不要写学籍号、联系方式、家庭住址或无关医疗资料。</span></li>
+      </ol>
+    </div>
+    <div class="modal-actions"><button class="button primary close-team-help" type="button">知道了</button></div>
+  </dialog>
+
+  <dialog class="modal feedback-dialog" id="teamFeedbackDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">团队改进</span><h2>提交意见反馈</h2></div>
+      <button class="icon-button close-team-feedback" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <form class="modal-body" id="teamFeedbackForm">
+      <label class="team-field"><span>反馈类型</span><select id="teamFeedbackCategory" required><option value="suggestion">功能建议</option><option value="content">评估内容</option><option value="workflow">操作流程</option><option value="bug">故障问题</option><option value="other">其他</option></select></label>
+      <label class="team-field"><span>具体内容</span><textarea id="teamFeedbackContent" minlength="5" maxlength="2000" required placeholder="请描述出现的位置、实际情况和建议。不要填写学生姓名或其他身份信息。"></textarea></label>
+      <p class="feedback-privacy-note">反馈会附带当前页面与登录账号，供部门管理员跟进；不会记录 IP 地址。</p>
+      <div class="form-error" id="teamFeedbackError" role="alert"></div>
+      <div class="modal-actions"><button class="button quiet close-team-feedback" type="button">取消</button><button class="button primary" type="submit">提交反馈</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal password-reset-dialog" id="passwordResetDialog">
+    <div class="modal-head">
+      <div><span class="eyebrow">管理员重置</span><h2>新的临时登录凭据</h2></div>
+      <button class="icon-button close-password-reset" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="modal-body password-reset-body">
+      <p><strong id="resetMemberName">成员</strong>下次登录必须先修改密码。临时密码只在本窗口显示一次，请通过校内可信渠道单独发送。</p>
+      <label class="team-field"><span>登录邮箱</span><input id="resetMemberEmail" readonly></label>
+      <label class="team-field"><span>临时密码</span><div class="temporary-password-field"><input id="resetTemporaryPassword" readonly><button class="button quiet" id="copyResetCredentialsBtn" type="button">复制账号和密码</button></div></label>
+      <div class="modal-actions"><button class="button primary close-password-reset" type="button">已妥善保存</button></div>
+    </div>
   </dialog>
 
   <div class="toast" id="teamToast" role="status" aria-live="polite"></div>

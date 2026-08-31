@@ -36,6 +36,75 @@ const mobilitySupports = {
   "主要依赖成人协助": "先建立稳定体位和可预测的成人协助，再安排主动参与步骤"
 };
 
+const professionalModuleProfiles = [
+  {
+    id: "si",
+    label: "感觉统合 SI",
+    courseTitle: "感觉统合个训（SI）",
+    focus: "感觉调节、身体觉、活动转换与可学习状态",
+    minimumDomains: 5,
+    domainWeights: {
+      tactile: 1,
+      vestibular: 1,
+      proprioceptive: 1,
+      auditory: 0.8,
+      regulation: 1,
+      visual: 0.35,
+      postural: 0.35,
+      participation: 0.45
+    }
+  },
+  {
+    id: "ot",
+    label: "作业治疗 OT",
+    courseTitle: "作业治疗个训（OT）",
+    focus: "生活自理、精细操作、动作计划与课堂任务参与",
+    minimumDomains: 5,
+    domainWeights: {
+      visual: 0.75,
+      bilateral: 1,
+      praxis: 1,
+      fineMotor: 1,
+      participation: 1,
+      tactile: 0.35,
+      proprioceptive: 0.35,
+      postural: 0.45,
+      regulation: 0.4
+    }
+  },
+  {
+    id: "st",
+    label: "言语语言 ST",
+    courseTitle: "言语语言个训（ST）",
+    focus: "语言理解与表达、功能沟通、社会沟通与辅助沟通",
+    minimumDomains: 4,
+    domainWeights: {
+      receptiveExpressive: 1,
+      functionalCommunication: 1,
+      oral: 0.7,
+      auditory: 0.45,
+      participation: 0.35,
+      regulation: 0.25
+    }
+  },
+  {
+    id: "pt",
+    label: "运动功能 / PT",
+    courseTitle: "运动功能个训（PT）",
+    focus: "姿势、粗大运动、平衡、校园移动与活动耐力",
+    minimumDomains: 4,
+    domainWeights: {
+      postural: 1,
+      grossMotorMobility: 1,
+      balanceEndurance: 1,
+      vestibular: 0.4,
+      proprioceptive: 0.35,
+      bilateral: 0.3,
+      participation: 0.3
+    }
+  }
+];
+
 function compactText(value, maxLength = 100) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
@@ -79,6 +148,99 @@ function targetItemFor(row) {
     .sort((a, b) => a.score - b.score)[0] || null;
 }
 
+function professionalAssessor(data, moduleId) {
+  const value = data.professionalAssessors?.[moduleId];
+  return value && typeof value === "object" ? value : {};
+}
+
+function buildCourseDecision(data, domains, rows, impactLabels) {
+  const moduleReadiness = {};
+  const candidates = professionalModuleProfiles.map((profile) => {
+    const coreDomains = domains.filter((domain) => domain.professional === profile.id);
+    const coreRows = rows.filter((row) => row.professional === profile.id);
+    const validCoreRows = coreRows.filter((row) => row.valid);
+    const totalItems = coreDomains.reduce((sum, domain) => sum + domain.items.length, 0);
+    const answeredItems = coreRows.reduce((sum, row) => sum + row.answered, 0);
+    const requiredDomains = Math.min(profile.minimumDomains || 4, coreDomains.length || profile.minimumDomains || 4);
+    const ready = validCoreRows.length >= requiredDomains;
+    const weightFor = (row) => profile.domainWeights[row.id] ?? (row.professional === profile.id ? 1 : 0);
+    const evidenceRows = rows.filter((row) => row.valid && weightFor(row) > 0);
+    const weightedTotal = evidenceRows.reduce((sum, row) => sum + weightFor(row), 0);
+    const needIndex = weightedTotal
+      ? evidenceRows.reduce((sum, row) => sum + row.priority * weightFor(row), 0) / weightedTotal
+      : null;
+    const significant = evidenceRows.some((row) => row.average < 3 || row.impact >= 2 || row.supportWeight >= 3);
+    const assessor = professionalAssessor(data, profile.id);
+
+    moduleReadiness[profile.id] = {
+      label: profile.label,
+      validDomainCount: validCoreRows.length,
+      totalDomainCount: coreDomains.length,
+      requiredDomainCount: requiredDomains,
+      answeredItems,
+      totalItems,
+      coverage: totalItems ? Math.round((answeredItems / totalItems) * 100) : 0,
+      ready,
+      evaluator: String(assessor.evaluator || ""),
+      assessmentDate: String(assessor.assessmentDate || "")
+    };
+
+    const strongestEvidence = evidenceRows
+      .slice()
+      .sort((left, right) => right.priority - left.priority)
+      .slice(0, 2);
+    return {
+      ...profile,
+      ready,
+      needIndex,
+      significant,
+      strongestEvidence
+    };
+  });
+
+  const eligible = candidates
+    .filter((candidate) => candidate.ready && candidate.needIndex !== null && (candidate.needIndex >= 3.2 || candidate.significant))
+    .sort((left, right) => right.needIndex - left.needIndex);
+  const selected = [];
+  if (eligible[0]) selected.push(eligible[0]);
+  if (eligible[1]) {
+    const closeToPrimary = eligible[1].needIndex >= eligible[0].needIndex * 0.82;
+    if (eligible[1].needIndex >= 3.5 && (closeToPrimary || eligible[1].significant)) selected.push(eligible[1]);
+  }
+
+  const recommendations = selected.slice(0, 2).map((candidate, index) => {
+    const evidence = candidate.strongestEvidence.map((row) => `${row.title}${row.average.toFixed(1)}分、${impactLabels[row.impact] || impactLabels[0]}`);
+    const priorityLabel = index === 0 ? "首选" : "第二建议";
+    return {
+      courseId: candidate.id,
+      title: candidate.courseTitle,
+      rank: index + 1,
+      priorityLabel,
+      needIndex: Number(candidate.needIndex.toFixed(2)),
+      rationale: evidence.length
+        ? `主要依据：${evidence.join("；")}。`
+        : "当前模块已完成有效观察。",
+      focus: candidate.focus,
+      decisionNote: "由跨专业团队结合医学安全、家庭优先事项、学生承受度和学校课时资源复核后排课。"
+    };
+  });
+
+  const notes = [];
+  if (!recommendations.length) {
+    const anyReady = Object.values(moduleReadiness).some((item) => item.ready);
+    notes.push(anyReady
+      ? "当前结果暂不支持仅凭本次观察新增个训课，建议先采用课堂与生活情境支持，并按目标追踪后复评。"
+      : "尚无专业模块达到分流所需的最低资料量；请先达到相应模块标注的有效领域数后再形成个训建议。");
+  } else {
+    notes.push(`系统本次建议${recommendations.length}项个训方向，按功能需要而非诊断名称排序。`);
+  }
+  const incomplete = Object.values(moduleReadiness).filter((item) => !item.ready).map((item) => item.label);
+  if (incomplete.length) notes.push(`未充分评估的模块：${incomplete.join("、")}；不能据此判断这些专业是否不需要。`);
+  notes.push("个训推荐属于校内服务分流决策支持，不替代相应专业的完整评估，也不应自动生成最终课表。");
+
+  return { moduleReadiness, recommendations, notes };
+}
+
 export function deidentifyAssessmentRecord(data) {
   const name = String(data.studentName || "");
   const scrub = (value) => name ? String(value || "").split(name).join("该学生") : String(value || "");
@@ -112,6 +274,10 @@ export function compactAssessmentAnalysis(result) {
     needs: result.needs,
     goals: result.goals,
     strategies: result.strategies,
+    courseRecommendations: result.courseRecommendations,
+    courseRecommendationNotes: result.courseRecommendationNotes,
+    moduleReadiness: result.moduleReadiness,
+    moduleSummaries: result.moduleSummaries,
     domainScores: result.domainScores
   };
 }
@@ -123,7 +289,8 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     const itemScores = domain.items.map((item) => ({ ...item, score: scoreValue(value.items?.[item.id]) }));
     const rated = itemScores.filter((item) => item.score !== null);
     const average = rated.length ? rated.reduce((sum, item) => sum + item.score, 0) / rated.length : null;
-    const valid = rated.length >= 3;
+    const minimumItems = Number(domain.minimumItems) || Math.max(3, Math.ceil(domain.items.length * 0.6));
+    const valid = rated.length >= minimumItems;
     const impact = Math.max(0, Math.min(3, Number(value.impact) || 0));
     const currentSupportWeight = supportWeight(value.support);
     const lowestScore = rated.length ? Math.min(...rated.map((item) => item.score)) : null;
@@ -135,6 +302,7 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
       ...value,
       itemScores,
       answered: rated.length,
+      minimumItems,
       average,
       valid,
       impact,
@@ -144,7 +312,11 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     };
   });
 
-  const totalItems = domains.reduce((sum, domain) => sum + domain.items.length, 0);
+  const startedProfessionalIds = new Set(rows.filter((row) => row.answered > 0).map((row) => row.professional));
+  const assessedDomains = startedProfessionalIds.size
+    ? domains.filter((domain) => startedProfessionalIds.has(domain.professional))
+    : domains;
+  const totalItems = assessedDomains.reduce((sum, domain) => sum + domain.items.length, 0);
   const answeredItems = rows.reduce((sum, row) => sum + row.answered, 0);
   const coverage = totalItems ? Math.round((answeredItems / totalItems) * 100) : 0;
   const validRows = rows.filter((row) => row.valid);
@@ -155,14 +327,34 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   const goalCommunicationSupport = data.communicationMode || "现有沟通方式";
   const mobilitySupport = mobilitySupports[data.mobility] || mobilitySupports["独立移动"];
   const confidence = confidenceFor(data, coverage, validRows.length, observationSources.length);
+  const courseDecision = buildCourseDecision(data, domains, rows, impactLabels);
 
-  let level = "资料不足";
-  if (average !== null) {
-    if (average < 2) level = "高强度支持需求";
-    else if (average < 3) level = "显著支持需求";
-    else if (average < 4) level = "发展中";
-    else level = "整体较稳定";
-  }
+  const levelForAverage = (value) => {
+    if (value === null) return "资料不足";
+    if (value < 2) return "高强度支持需求";
+    if (value < 3) return "显著支持需求";
+    if (value < 4) return "发展中";
+    return "整体较稳定";
+  };
+  const moduleSummaries = Object.fromEntries(professionalModuleProfiles.map((profile) => {
+    const moduleRows = rows.filter((row) => row.professional === profile.id);
+    const validModuleRows = moduleRows.filter((row) => row.valid);
+    const moduleAverage = validModuleRows.length >= 3
+      ? validModuleRows.reduce((sum, row) => sum + row.average, 0) / validModuleRows.length
+      : null;
+    const priorities = validModuleRows.slice().sort((left, right) => right.priority - left.priority);
+    const strengths = validModuleRows.slice().sort((left, right) => right.average - left.average);
+    return [profile.id, {
+      average: moduleAverage,
+      level: levelForAverage(moduleAverage),
+      validDomainCount: validModuleRows.length,
+      totalDomainCount: moduleRows.length,
+      priorityDomainIds: priorities.slice(0, 4).map((row) => row.id),
+      strengthDomainIds: strengths.slice(0, 3).map((row) => row.id)
+    }];
+  }));
+
+  const level = levelForAverage(average);
 
   const sortedPriority = validRows.slice().sort((a, b) => b.priority - a.priority);
   const stableRows = validRows
@@ -177,6 +369,9 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   let summary = `当前有${validRows.length}个有效领域。至少完成3个领域，且每个领域不少于3项，才能生成综合分析。`;
   if (average !== null) {
     summary = `综合表现：${level}。本次完成${validRows.length}个有效领域、${answeredItems}项观察。相对优势：${strengthTitles}。优先支持：${focusTitles}。结果可信度：${confidence}，请结合课堂、家庭等自然情境和团队复核后使用。`;
+    if (courseDecision.recommendations.length) {
+      summary += ` 个训方向建议：${courseDecision.recommendations.map((item) => item.title).join("、")}。`;
+    }
   }
 
   const basis = [
@@ -187,12 +382,18 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     "支持优先级：综合参考领域均分、参与影响、当前支持等级和最低项目表现。",
     `目标设定：以当前能力为起点，8周内先提高1级，并适配${data.communicationMode || "当前沟通方式"}和${data.mobility || "当前移动能力"}。`
   ];
+  const assignedModules = professionalModuleProfiles.map((profile) => {
+    const assessor = professionalAssessor(data, profile.id);
+    if (!assessor.evaluator) return "";
+    return `${profile.label}由${assessor.evaluator}负责${assessor.assessmentDate ? `（${assessor.assessmentDate}）` : ""}`;
+  }).filter(Boolean);
+  if (assignedModules.length) basis.push(`专业分工：${assignedModules.join("；")}。`);
   if (data.background) basis.push("目标内容已结合家庭或教师关切，并优先选择有实际意义的活动。");
   if (rows.some((row) => compactText(row.note))) basis.push("复核时需对照原观察记录，核对任务、提示、持续时间和不同情境表现。");
 
   const strengths = relativeStrengths.map((row) => {
     const items = bestItemsFor(row).map((item) => `${item.label}（${item.score}级）`);
-    return `${row.title}（${row.average.toFixed(1)}分，${impactLabels[row.impact]}）：较稳定项目为${items.join("；") || "已评项目"}。可用于支持${leverageByDomain[row.id] || "自然活动参与"}。`;
+    return `${row.title}（${row.average.toFixed(1)}分，${impactLabels[row.impact]}）：较稳定项目为${items.join("；") || "已评项目"}。可用于支持${leverageByDomain[row.id] || row.scope || "自然活动参与"}。`;
   });
 
   const needs = focusRows.map((row) => {
@@ -238,6 +439,10 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   if (data.medicalPrecautions) alerts.push("已填写医疗与安全注意事项。开展运动、口腔或进食活动前，须由具备相应资质的专业人员核对风险。");
   if (focusRows.some((row) => row.id === "vestibular")) alerts.push("前庭活动中应允许学生主动停止，并观察面色、眼神、眩晕、恶心和活动后恢复；出现异常应立即停止并转介。");
   if (focusRows.some((row) => row.id === "oral")) alerts.push("本报告中的口腔与进食建议不能替代吞咽评估。若出现呛咳、湿嗓或呼吸改变，应先转介医学或吞咽专业评估。");
+  const feedingSafety = rows.find((row) => row.id === "stFeedingSafety");
+  if (feedingSafety?.itemScores.some((item) => item.score !== null && item.score <= 2)) alerts.push("进食与吞咽风险筛查存在低等级项目。开展食物或液体训练前，应核对呛咳、湿嗓、呼吸改变、反复感染和营养风险，并由具备相应资质的专业人员决定是否需要完整吞咽评估。");
+  const movementSafetyRows = rows.filter((row) => ["ptEndurance", "ptEquipmentAccess", "ptTransfers"].includes(row.id));
+  if (movementSafetyRows.some((row) => row.itemScores.some((item) => item.score !== null && item.score <= 2))) alerts.push("运动功能记录提示较高支持需要。实施转移、耐力或辅具活动前，应核对疼痛、心肺反应、皮肤情况、设备匹配和照护者操作安全。");
   alerts.push("本结果来自功能性观察，不是标准化常模量表，不能单独用于医学诊断、教育安置或服务资格判定。");
 
   if (!strengths.length) strengths.push("完成更多领域后，将显示学生较稳定的能力和可利用的支持资源。");
@@ -245,7 +450,7 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   if (!goals.length) goals.push("完成至少3个领域后，系统将根据当前能力、参与影响和支持等级生成8周阶段目标。");
 
   return {
-    methodVersion: "individualized-functional-v4",
+    methodVersion: "multidisciplinary-functional-v6",
     average,
     coverage,
     answeredItems,
@@ -261,9 +466,14 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     needs,
     goals,
     strategies: strategies.slice(0, 10),
+    courseRecommendations: courseDecision.recommendations,
+    courseRecommendationNotes: courseDecision.notes,
+    moduleReadiness: courseDecision.moduleReadiness,
+    moduleSummaries,
     priorities: focusRows,
     domainScores: Object.fromEntries(validRows.map((row) => [row.id, {
       title: row.title,
+      professional: row.professional || "",
       score: Number(row.average.toFixed(2)),
       impact: row.impact,
       answered: row.answered,

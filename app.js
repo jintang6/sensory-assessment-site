@@ -1,5 +1,6 @@
 import { analyzeAssessment, compactAssessmentAnalysis, deidentifyAssessmentRecord } from "./assessment-engine.js";
-import { assessmentReportFilename, buildAssessmentReportDocument } from "./report-docx.js";
+import { assessmentReportFilename, buildAssessmentReportDocument, loadReportFontData } from "./report-docx.js";
+import { domains, domainCounts } from "./assessment-domains.js";
 
 const STORAGE_KEY = "sensoryAssessmentRecords.v2";
 const DRAFT_KEY = "sensoryAssessmentDraft.v2";
@@ -9,7 +10,8 @@ const CLOUD_SETTINGS_KEY = "sensoryCloudSettings.v1";
 const TEAM_RECORD_TRANSFER_KEY = "sensoryTeamOpenRecord.v1";
 const AUTO_SAVE_DELAY = 650;
 const AUTO_SYNC_IDLE_DELAY = 4_000;
-const MIN_CLOUD_SYNC_INTERVAL = 15_000;
+const MIN_CLOUD_SYNC_INTERVAL = 30_000;
+const ASSESSMENT_CATALOG_VERSION = 6;
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const IS_WECHAT = /MicroMessenger/i.test(navigator.userAgent);
 const API_ORIGIN = location.hostname === "sensory-assessment-site.pages.dev" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
@@ -55,213 +57,57 @@ const scoreLevels = {
 };
 
 const impactLabels = ["无明显影响", "轻度影响", "中度影响", "显著影响"];
-
-const domains = [
-  {
-    id: "tactile",
-    category: "modulation",
-    title: "触觉调节与辨别",
-    scope: "身体接触、材料探索、照护耐受与触觉定位",
-    strategies: [
-      "触觉活动前先安排可预测的推、拉、搬运等本体觉准备，再由干爽材料逐步过渡到湿黏或颗粒材料。",
-      "洗护、穿衣和材料操作前使用视觉预告与明确停止信号，避免突然、不可控的触碰。"
-    ],
-    items: [
-      { id: "touch_people", label: "在预告后接受成人协助触碰身体，不出现明显回避或僵硬", observe: "观察穿衣、整理姿势与治疗协助" },
-      { id: "touch_materials", label: "主动接触并操作不同质地的学习或游戏材料", observe: "干、湿、软、硬、颗粒材料" },
-      { id: "grooming", label: "耐受洗手、擦脸、梳头、剪指甲等日常照护", observe: "记录可接受的步骤和持续时间" },
-      { id: "clothing", label: "适应常见衣物、鞋袜和接缝标签，不因触觉持续分心", observe: "课堂和生活自理情境" },
-      { id: "localization", label: "能定位被触碰部位，并用动作或沟通方式作出相应反应", observe: "双侧身体与遮挡视觉条件" }
-    ]
-  },
-  {
-    id: "vestibular",
-    category: "modulation",
-    title: "前庭调节与运动耐受",
-    scope: "重力安全感、移动反应、停止后的恢复与唤醒水平",
-    strategies: [
-      "前庭输入采用短时、可预测、可主动停止的方式，优先线性运动，旋转活动需严格控制次数并观察面色、眼神和情绪。",
-      "运动活动结束后连接稳定的本体觉任务和明确落点，帮助学生恢复到可学习状态。"
-    ],
-    items: [
-      { id: "position_change", label: "接受坐、跪、趴、站等姿势转换，并保持情绪和身体稳定", observe: "地面、器械与课堂转换" },
-      { id: "feet_off_ground", label: "在安全保护下参与双脚离地或重心变化活动", observe: "秋千、平衡台、台阶等" },
-      { id: "linear_motion", label: "耐受前后、左右或上下的线性移动，不出现明显恐惧或过度兴奋", observe: "记录速度、幅度和停止信号" },
-      { id: "stop_recover", label: "运动停止后能在2分钟内恢复定向，并进入下一项任务", observe: "关注眼震、眩晕、兴奋与逃避" },
-      { id: "movement_choice", label: "能主动选择合适的运动强度，并在提示下停止或调整", observe: "体现自我监控与安全意识" }
-    ]
-  },
-  {
-    id: "proprioceptive",
-    category: "modulation",
-    title: "本体觉与身体觉",
-    scope: "身体位置、力量分级、关节稳定与重力工作后的组织",
-    strategies: [
-      "在课前和桌面任务前安排推墙、搬垫、拉弹力带等重力工作，并记录其对注意和动作控制的实际影响。",
-      "用轻、中、重的视觉刻度和即时反馈练习力量分级，避免仅以增加强刺激作为调节手段。"
-    ],
-    items: [
-      { id: "body_position", label: "不依赖视觉也能大致判断四肢位置并调整身体姿势", observe: "模仿姿势、闭眼定位与穿衣" },
-      { id: "force_grade", label: "拿取、推拉和书写时能按物品与任务调整用力大小", observe: "避免过轻掉落或过重损坏" },
-      { id: "space_body", label: "移动时能注意自身与人、物的距离，减少碰撞和跌撞", observe: "走廊、排队、体育与游戏" },
-      { id: "joint_stability", label: "肩、肘、腕和躯干能为操作任务提供稳定支撑", observe: "爬行、支撑、桌面精细活动" },
-      { id: "heavy_work_response", label: "完成适量抗阻活动后，唤醒水平和任务参与更有组织", observe: "比较活动前后5-10分钟表现" }
-    ]
-  },
-  {
-    id: "auditory",
-    category: "modulation",
-    title: "听觉调节与信息处理",
-    scope: "声音耐受、声源定位、指令理解与背景噪声过滤",
-    strategies: [
-      "降低不必要背景声，使用短句、停顿和视觉提示，确认学生注意后再给出1-2步指令。",
-      "对不可避免的声音提前预告并提供降噪、安静角或短暂离开的选择，同时逐步训练功能性耐受。"
-    ],
-    items: [
-      { id: "sound_tolerance", label: "耐受课堂和校园常见声音，不因普通声响持续中断活动", observe: "铃声、谈话、拖椅与器材声" },
-      { id: "sound_location", label: "能寻找并大致定位呼名、提示音或环境声来源", observe: "左右、前后和不同距离" },
-      { id: "name_safety", label: "在适当音量下回应姓名和安全指令", observe: "停止、等待、过来等关键指令" },
-      { id: "follow_instruction", label: "在视觉支持下理解并执行1-2步口头指令", observe: "记录重复次数和延迟" },
-      { id: "noise_filter", label: "存在背景谈话时仍能维持对主要教师或任务声音的关注", observe: "低、中等干扰条件" }
-    ]
-  },
-  {
-    id: "visual",
-    category: "modulation",
-    title: "视觉调节与视觉辨别",
-    scope: "光线与视觉复杂度耐受、追踪、扫描和空间关系",
-    strategies: [
-      "减少桌面视觉拥挤，使用清晰边界、对比和由左到右的扫描提示，逐步增加材料数量。",
-      "视觉任务与姿势稳定结合，避免在疲劳或高唤醒状态下持续增加追踪和抄写负荷。"
-    ],
-    items: [
-      { id: "visual_tolerance", label: "适应常见室内光线、颜色和移动视觉信息，不持续回避或寻求", observe: "日光、屏幕、反光和人群移动" },
-      { id: "tracking", label: "头部相对稳定时，双眼能跟随缓慢移动的物体或目标", observe: "横向、纵向和跨中线" },
-      { id: "visual_scan", label: "能按一定顺序扫描桌面或空间并找到目标物", observe: "2-8个物品逐级增加" },
-      { id: "discrimination", label: "能辨认常见形状、大小、颜色或图形的相同与不同", observe: "配对、分类与找不同" },
-      { id: "spatial_relation", label: "理解并操作上/下、里/外、前/后等基本空间关系", observe: "动作指令、拼搭和纸笔任务" }
-    ]
-  },
-  {
-    id: "oral",
-    category: "modulation",
-    title: "口腔感觉与进食参与",
-    scope: "口周照护、质地接受、咀嚼组织与安全进食参与",
-    strategies: [
-      "进食训练必须先确认吞咽和医疗安全，从可接受食物的相近味道、形状或质地做微小变化，不强迫进食。",
-      "先进行可预测的口周外部准备和非食物口腔活动，再连接刷牙、饮水或进食等真实任务。"
-    ],
-    items: [
-      { id: "oral_care", label: "接受擦口、刷牙和口周清洁等日常照护", observe: "记录工具、时长和可接受区域" },
-      { id: "texture_range", label: "在安全前提下接受与年龄和能力相符的多种食物质地", observe: "不以强迫方式扩展食物" },
-      { id: "bite_chew", label: "能按食物特性进行咬断和持续咀嚼", observe: "需由具备相应资质者判断安全" },
-      { id: "oral_seeking", label: "能用安全、适当的方式满足咬、吸或口腔探索需要", observe: "减少咬衣物和非食物物品" },
-      { id: "mealtime_participation", label: "能在进餐位置保持适当唤醒和参与，完成约定步骤", observe: "坐姿、餐具、等待和结束" }
-    ]
-  },
-  {
-    id: "postural",
-    category: "sensorimotor",
-    title: "姿势控制与眼动稳定",
-    scope: "抗重力姿势、坐姿耐力、平衡反应与视线稳定",
-    strategies: [
-      "先建立脚部、骨盆和前臂支撑，再逐步延长坐姿和视觉任务时间；调整桌椅高度而不是反复口头提醒。",
-      "在安全保护下使用缓慢重心转移、爬行和支撑活动，强调质量、对称和呼吸，不追求疲劳。"
-    ],
-    items: [
-      { id: "seated_posture", label: "在合适桌椅支持下维持功能性坐姿5分钟", observe: "头颈、躯干、骨盆和脚部支撑" },
-      { id: "antigravity", label: "能短时维持抗重力姿势完成爬、支撑或抬头活动", observe: "关注代偿、屏气与疲劳" },
-      { id: "balance_reaction", label: "重心轻度偏移时能作出调整并恢复平衡", observe: "坐位、跪位和站位" },
-      { id: "protective_response", label: "失衡时能出现保护性伸手或安全落地反应", observe: "仅在充分保护的任务中观察" },
-      { id: "gaze_stability", label: "身体或头部轻度移动时仍能保持视线在任务目标上", observe: "抄写、投接和移动中看目标" }
-    ]
-  },
-  {
-    id: "bilateral",
-    category: "sensorimotor",
-    title: "双侧协调与跨中线",
-    scope: "两侧身体配合、左右交替、跨中线和手的分工",
-    strategies: [
-      "从拍手、推拉、爬行等对称大动作过渡到左右交替，再迁移到剪纸、穿衣和稳定纸张等双手任务。",
-      "材料放置应鼓励自然跨中线，避免用固定手强迫完成；观察优势手是否在任务中逐步稳定。"
-    ],
-    items: [
-      { id: "symmetric", label: "两侧身体能同时完成拍、推、拉、跳等对称动作", observe: "从慢速节律开始" },
-      { id: "alternating", label: "能完成左右交替的爬、踏步或拍击动作", observe: "关注顺序和持续轮次" },
-      { id: "midline", label: "操作时能自然跨越身体中线取放物品", observe: "不频繁换手或转动全身代偿" },
-      { id: "helper_hand", label: "双手任务中，一手操作、一手稳定材料，分工较清楚", observe: "剪纸、穿珠、开盒和穿衣" },
-      { id: "hand_preference", label: "在熟悉精细任务中逐步形成较一致的操作手", observe: "不强行指定左右手" }
-    ]
-  },
-  {
-    id: "praxis",
-    category: "sensorimotor",
-    title: "动作计划与序列",
-    scope: "动作构想、模仿、顺序执行、问题解决与迁移",
-    strategies: [
-      "使用示范、图片流程和固定动作口令，把新动作拆成可成功的小步骤，稳定后逐步减少提示。",
-      "在相同动作目标下更换材料、方向或场地，观察学生能否迁移，而不是只记住单一训练套路。"
-    ],
-    items: [
-      { id: "imitate", label: "观察示范后能模仿新的单步或组合身体动作", observe: "记录观察时间、提示和准确度" },
-      { id: "idea", label: "面对熟悉材料能想出并开始一种合适的玩法或操作方式", observe: "减少等待成人直接安排" },
-      { id: "sequence", label: "按图片或示范完成3步动作或操作序列", observe: "顺序、遗漏与重复" },
-      { id: "adjust_plan", label: "动作失败后能在提示下调整姿势、方向或用力再次尝试", observe: "关注挫折耐受和问题解决" },
-      { id: "generalize_motor", label: "能把已学动作迁移到新的材料、人员或环境中", observe: "至少比较两个情境" }
-    ]
-  },
-  {
-    id: "fineMotor",
-    category: "sensorimotor",
-    title: "精细动作与视觉运动",
-    scope: "抓放、双手操作、工具使用、图形复制和生活操作",
-    strategies: [
-      "精细任务前先建立肩肘稳定和手掌觉醒，材料由大到小、由阻力明显到精细控制逐级调整。",
-      "以真实学习和自理任务为载体，记录完成质量、时间和提示等级，避免只练脱离情境的手部动作。"
-    ],
-    items: [
-      { id: "grasp_release", label: "能根据物品大小调整抓握并准确放到指定位置", observe: "积木、夹子、硬币和小物投放" },
-      { id: "in_hand", label: "能在一只手内进行简单转移、调整或捏取操作", observe: "掌指转移、旋转笔或整理小物" },
-      { id: "visual_motor", label: "能仿画或拼搭与能力水平相符的线条、形状或结构", observe: "质量优先于速度" },
-      { id: "tool_use", label: "能安全使用剪刀、夹子、勺子或书写工具完成任务", observe: "关注握持、方向和辅助程度" },
-      { id: "fasteners", label: "能参与拉链、按扣、旋盖或穿脱等双手精细步骤", observe: "选择符合当前生活目标的项目" }
-    ]
-  },
-  {
-    id: "regulation",
-    category: "participation",
-    title: "唤醒调节、注意与转衔",
-    scope: "进入可学习状态、持续参与、等待、求助和恢复",
-    strategies: [
-      "把调节策略固定在课前准备、课中短休和活动结束三个节点，使用视觉日程、先后板和明确结束信号。",
-      "教授可替代行为，如出示休息卡、请求帮助、深压或短暂重力工作，并记录恢复到任务的时间。"
-    ],
-    items: [
-      { id: "ready_state", label: "在成人支持下进入适合当前活动的清醒与稳定状态", observe: "区分低唤醒、过度兴奋和焦虑" },
-      { id: "sustain", label: "在匹配能力的任务中维持参与5-10分钟", observe: "记录有效参与时间和提示次数" },
-      { id: "transition", label: "在预告和视觉支持下从一项活动转换到下一项", observe: "关注等待、结束和进入新活动" },
-      { id: "request_break", label: "感觉负荷过高时能用约定方式请求休息、帮助或停止", observe: "口语、手势、图片或设备均可" },
-      { id: "recover", label: "出现挫折或失调后，能借助已教策略恢复并重新参与", observe: "记录恢复时间和所需支持" }
-    ]
-  },
-  {
-    id: "participation",
-    category: "participation",
-    title: "课堂、生活与社会参与",
-    scope: "学习任务、自理流程、游戏互动、安全与跨情境迁移",
-    strategies: [
-      "优先在课堂、进餐、穿脱、游戏等真实任务中嵌入支持，目标同时写明活动、情境、提示和完成标准。",
-      "由治疗师、教师和家庭使用同一提示层级与记录方式，先稳定一个关键步骤，再扩展完整流程。"
-    ],
-    items: [
-      { id: "class_task", label: "在课堂常规中进入座位、准备材料并完成约定任务片段", observe: "记录独立步骤和成人提示" },
-      { id: "self_care", label: "按图片或环境线索参与一项穿脱、如厕、洗手或用餐流程", observe: "以真实自理优先事项选择" },
-      { id: "play_social", label: "在游戏或小组活动中与同伴共享空间、材料或轮次", observe: "可使用成人支持和视觉规则" },
-      { id: "safety", label: "在移动和器械活动中遵守停止、等待和边界等安全规则", observe: "不同人员和环境下复核" },
-      { id: "generalization", label: "把已掌握的调节或动作策略应用到至少两个自然情境", observe: "比较训练室、课堂与家庭" }
-    ]
-  }
+const impactDescriptions = [
+  "存在相关表现，但不会妨碍学生开始、继续或完成课堂、生活和活动任务。",
+  "偶尔减慢、分心或回避，经一次简单提醒或环境调整后通常能继续。",
+  "经常中断任务，需要重复提示、较多协助或明显调整环境才能继续。",
+  "多数时候难以开始、继续或完成活动，参与受到明显限制，或已经涉及安全风险。"
 ];
+
+const professionalModules = [
+  { id: "si", label: "感觉统合", short: "SI", description: "感觉调节、身体觉与活动状态" },
+  { id: "ot", label: "作业治疗", short: "OT", description: "自理、操作与任务参与" },
+  { id: "st", label: "言语语言", short: "ST", description: "语言、沟通与口腔参与" },
+  { id: "pt", label: "运动功能", short: "PT", description: "姿势、移动、平衡与耐力" }
+];
+
+const professionalPageCopy = {
+  si: {
+    title: "知衡 · 感觉统合功能评估",
+    product: "感觉统合功能评估",
+    subtitle: "特殊教育学校 · 感觉调节、身体觉与活动状态",
+    intro: "<strong>感觉统合学校场景功能观察</strong>，关注感觉调节、身体觉、活动转换及真实参与表现。",
+    heading: "感觉统合与活动状态评估",
+    description: "由感统主评人员完成本模块；需要跨专业解释的表现可留给OT、ST或运动/PT入口继续评估。"
+  },
+  ot: {
+    title: "知衡 · 作业治疗功能评估",
+    product: "作业治疗功能评估",
+    subtitle: "特殊教育学校 · 自理、操作、动作计划与任务参与",
+    intro: "<strong>作业治疗学校场景功能观察</strong>，关注学生完成课堂、生活自理和操作任务所需的能力与支持。",
+    heading: "作业治疗与日常活动评估",
+    description: "由OT主评人员完成本模块，重点记录任务质量、提示等级、环境条件和活动参与结果。"
+  },
+  st: {
+    title: "知衡 · 言语语言功能评估",
+    product: "言语语言功能评估",
+    subtitle: "特殊教育学校 · 语言理解、表达、功能沟通与互动",
+    intro: "<strong>言语语言学校场景功能观察</strong>，关注学生在真实活动中的理解、表达、沟通修复与辅助沟通使用。",
+    heading: "言语语言与功能沟通评估",
+    description: "由ST主评人员完成本模块；口腔进食项目涉及吞咽安全时，应先进行相应专业转介。"
+  },
+  pt: {
+    title: "知衡 · 运动功能评估",
+    product: "运动功能评估",
+    subtitle: "特殊教育学校 · 姿势、移动、平衡与校园活动耐力",
+    intro: "<strong>运动/PT学校场景功能观察</strong>，关注学生在校园真实路线和活动中的姿势、移动、安全与耐力。",
+    heading: "运动功能与校园移动评估",
+    description: "由运动/PT主评人员完成本模块；出现疼痛、突然退步或明显心肺异常时，应暂停并先行医学评估。"
+  }
+};
+
+const requestedModulePage = new URLSearchParams(location.search).get("module") || document.body.dataset.modulePage || "si";
+const activeModulePage = professionalPageCopy[requestedModulePage] ? requestedModulePage : "si";
 
 const form = document.getElementById("assessmentForm");
 const domainList = document.getElementById("domainList");
@@ -272,22 +118,24 @@ const cloudToggle = document.getElementById("cloudSyncToggle");
 const consentDialog = document.getElementById("cloudConsentDialog");
 const methodDialog = document.getElementById("methodDialog");
 const shareReportDialog = document.getElementById("shareReportDialog");
+const feedbackDialog = document.getElementById("feedbackDialog");
 const appHeader = document.querySelector(".app-header");
 
-let records = loadRecords();
+let records = [];
 let activeId = null;
 let draftTimer = null;
 let cloudSyncTimer = null;
 let toastTimer = null;
-let cloudSettings = loadCloudSettings();
 let teamSession = null;
+let cloudSettings = { enabled: true, deidentified: true, consentAt: "", lastSyncedAt: "" };
 let lastAnalysis = null;
-let lastCloudSyncAt = cloudSettings.lastSyncedAt ? new Date(cloudSettings.lastSyncedAt).getTime() : 0;
+let lastCloudSyncAt = 0;
 let lastSyncedSignature = "";
 let preparedReportFile = null;
 let preparedReportLink = null;
 let appHeaderObserver = null;
 let measuredAppHeaderHeight = 0;
+let isLoggingOut = false;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -327,6 +175,17 @@ function readJsonStorage(key, fallback) {
   }
 }
 
+function scopedStorageKey(key) {
+  return teamSession?.user?.id ? `${key}.${teamSession.user.id}` : key;
+}
+
+function readScopedStorage(key, fallback, { adminLegacy = false } = {}) {
+  const scoped = readJsonStorage(scopedStorageKey(key), null);
+  if (scoped !== null) return scoped;
+  if (adminLegacy && teamSession?.user?.role === "admin") return readJsonStorage(key, fallback);
+  return fallback;
+}
+
 function migrateLegacyRecord(record) {
   const mapping = {
     tactile: ["tactile"],
@@ -348,6 +207,7 @@ function migrateLegacyRecord(record) {
       const domain = domains.find((item) => item.id === currentId);
       if (!domain) return;
       nextDomains[currentId] = {
+        professional: domain.professional,
         items: Object.fromEntries(domain.items.map((item) => [item.id, score])),
         impact: score <= 2 ? 2 : score === 3 ? 1 : 0,
         support: score <= 2 ? "大量协助" : score === 3 ? "部分提示" : "少量提示",
@@ -374,6 +234,7 @@ function migrateLegacyRecord(record) {
     observationSources: [],
     background: record.background || "",
     medicalPrecautions: "",
+    catalogVersion: ASSESSMENT_CATALOG_VERSION,
     domains: nextDomains,
     createdAt: record.createdAt || new Date().toISOString(),
     updatedAt: record.updatedAt || new Date().toISOString(),
@@ -381,62 +242,170 @@ function migrateLegacyRecord(record) {
   };
 }
 
+function upgradeExpandedRecord(record) {
+  if (!record || typeof record !== "object" || Number(record.catalogVersion) >= ASSESSMENT_CATALOG_VERSION) return record;
+  const next = { ...record, domains: { ...(record.domains || {}) }, catalogVersion: ASSESSMENT_CATALOG_VERSION };
+  const supportRank = { "自然情境独立": 0, "少量提示": 1, "部分提示": 2, "大量协助": 3, "全程协助": 4 };
+
+  const mergeMapped = (sourceId, previousProfessional, targetId, itemMap) => {
+    const source = next.domains[sourceId];
+    if (!source || source.professional !== previousProfessional) return;
+    const targetDefinition = domains.find((domain) => domain.id === targetId);
+    if (!targetDefinition) return;
+    const target = next.domains[targetId] || { professional: targetDefinition.professional, items: {}, impact: 0, support: "部分提示", note: "" };
+    target.items = { ...(target.items || {}) };
+    Object.entries(itemMap).forEach(([sourceItemId, targetItemId]) => {
+      const score = Number(source.items?.[sourceItemId]);
+      if (Number.isInteger(score) && score >= 1 && score <= 5 && target.items[targetItemId] == null) target.items[targetItemId] = score;
+    });
+    target.impact = Math.max(Number(target.impact) || 0, Number(source.impact) || 0);
+    if ((supportRank[source.support] ?? 2) > (supportRank[target.support] ?? 2)) target.support = source.support;
+    const sourceNote = String(source.note || "").trim();
+    if (sourceNote && !String(target.note || "").includes(sourceNote)) target.note = [target.note, `旧版${moduleById(previousProfessional).short}记录：${sourceNote}`].filter(Boolean).join("\n");
+    next.domains[targetId] = target;
+  };
+
+  mergeMapped("visual", "ot", "otVisualPerceptual", {
+    discrimination: "visual_discrimination", visual_scan: "systematic_scan", spatial_relation: "spatial_relation"
+  });
+  mergeMapped("bilateral", "ot", "otBilateralPraxis", { midline: "cross_midline", helper_hand: "hand_roles" });
+  mergeMapped("praxis", "ot", "otBilateralPraxis", {
+    imitate: "imitate_action", idea: "motor_idea", sequence: "sequence_action", adjust_plan: "adapt_action"
+  });
+  mergeMapped("fineMotor", "ot", "otFineMotor", {
+    grasp_release: "grasp_pattern", in_hand: "in_hand_manipulation", tool_use: "grasp_pattern"
+  });
+  mergeMapped("fineMotor", "ot", "otVisualMotor", { visual_motor: "copy_forms" });
+  mergeMapped("participation", "ot", "otClassroomParticipation", { class_task: "task_persist" });
+  mergeMapped("participation", "ot", "otPlayLeisure", { play_social: "shared_space" });
+  mergeMapped("participation", "ot", "otAssistiveEnvironment", { generalization: "skill_generalization" });
+
+  mergeMapped("oral", "st", "stFeedingSafety", { bite_chew: "chewing", mealtime_participation: "alert_position" });
+  mergeMapped("receptiveExpressive", "st", "stReceptiveLanguage", {
+    understand_familiar: "familiar_words", follow_steps: "multi_step", understand_questions: "questions"
+  });
+  mergeMapped("receptiveExpressive", "st", "stExpressiveLanguage", {
+    express_needs: "express_needs", express_information: "describe_event"
+  });
+  mergeMapped("functionalCommunication", "st", "stFunctionalAAC", {
+    initiate: "functions", choice_refusal: "functions", repair_message: "repair", generalize_communication: "partner_generalize"
+  });
+  mergeMapped("functionalCommunication", "st", "stSocialCommunication", { turn_taking: "conversation_turn" });
+
+  mergeMapped("postural", "pt", "ptPostureAlignment", { seated_posture: "position_hold", antigravity: "trunk_control" });
+  mergeMapped("postural", "pt", "ptBalanceProtection", {
+    balance_reaction: "weight_shift", protective_response: "protective_step"
+  });
+  mergeMapped("grossMotorMobility", "pt", "ptTransfers", { position_transfer: "seat_transfer" });
+  mergeMapped("grossMotorMobility", "pt", "ptMobility", { level_mobility: "level_route" });
+  mergeMapped("grossMotorMobility", "pt", "ptStairsTerrain", { stairs: "stairs" });
+  mergeMapped("grossMotorMobility", "pt", "ptCoordination", { run_jump_alt: "run_alternative", ball_object: "throw_catch" });
+  mergeMapped("balanceEndurance", "pt", "ptBalanceProtection", {
+    static_balance: "standing_balance", dynamic_balance: "dynamic_balance"
+  });
+  mergeMapped("balanceEndurance", "pt", "ptEndurance", {
+    activity_endurance: "sustain_activity", body_safety: "pain_fatigue_report"
+  });
+  mergeMapped("balanceEndurance", "pt", "ptParticipation", { campus_route: "class_access" });
+
+  [
+    ["visual", "ot"], ["bilateral", "ot"], ["praxis", "ot"], ["fineMotor", "ot"], ["participation", "ot"],
+    ["oral", "st"], ["receptiveExpressive", "st"], ["functionalCommunication", "st"],
+    ["postural", "pt"], ["grossMotorMobility", "pt"], ["balanceEndurance", "pt"]
+  ].forEach(([sourceId, previousProfessional]) => {
+    if (next.domains[sourceId]?.professional === previousProfessional) delete next.domains[sourceId];
+  });
+  return next;
+}
+
 function loadRecords() {
-  const current = readJsonStorage(STORAGE_KEY, []);
-  if (Array.isArray(current) && current.length) return current;
-  const legacy = readJsonStorage(LEGACY_STORAGE_KEY, []);
+  const current = readScopedStorage(STORAGE_KEY, [], { adminLegacy: true });
+  if (Array.isArray(current) && current.length) {
+    const upgraded = current.map(upgradeExpandedRecord);
+    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(upgraded));
+    return upgraded;
+  }
+  const legacy = teamSession?.user?.role === "admin" ? readJsonStorage(LEGACY_STORAGE_KEY, []) : [];
   if (!Array.isArray(legacy) || !legacy.length) return [];
   const migrated = legacy.map(migrateLegacyRecord);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+  localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(migrated));
   return migrated;
 }
 
 function loadDraft() {
-  const current = readJsonStorage(DRAFT_KEY, null);
-  if (current) return current;
-  const legacy = readJsonStorage(LEGACY_DRAFT_KEY, null);
+  const current = readScopedStorage(DRAFT_KEY, null, { adminLegacy: true });
+  if (current) return upgradeExpandedRecord(current);
+  const legacy = teamSession?.user?.role === "admin" ? readJsonStorage(LEGACY_DRAFT_KEY, null) : null;
   return legacy ? migrateLegacyRecord(legacy) : null;
 }
 
 function loadCloudSettings() {
-  const value = readJsonStorage(CLOUD_SETTINGS_KEY, null);
+  const value = readScopedStorage(CLOUD_SETTINGS_KEY, null, { adminLegacy: true });
   return value && typeof value === "object"
-    ? { enabled: Boolean(value.enabled), deidentified: true, consentAt: value.consentAt || "", lastSyncedAt: value.lastSyncedAt || "" }
-    : { enabled: false, deidentified: true, consentAt: "", lastSyncedAt: "" };
+    ? { enabled: true, deidentified: true, consentAt: value.consentAt || new Date().toISOString(), lastSyncedAt: value.lastSyncedAt || "" }
+    : { enabled: true, deidentified: true, consentAt: new Date().toISOString(), lastSyncedAt: "" };
 }
 
 function persistCloudSettings() {
-  localStorage.setItem(CLOUD_SETTINGS_KEY, JSON.stringify(cloudSettings));
+  localStorage.setItem(scopedStorageKey(CLOUD_SETTINGS_KEY), JSON.stringify(cloudSettings));
 }
 
 function defaultDomainValue() {
   return { items: {}, impact: 0, support: "部分提示", note: "" };
 }
 
+function moduleById(id) {
+  return professionalModules.find((module) => module.id === id) || professionalModules[0];
+}
+
+function defaultProfessionalAssessors(assessmentDate = today()) {
+  return Object.fromEntries(professionalModules.map((module) => [module.id, { evaluator: "", assessmentDate }]));
+}
+
+function updateImpactDescription(domainId) {
+  const select = document.getElementById(`${domainId}Impact`);
+  const description = domainList.querySelector(`[data-impact-description="${domainId}"]`);
+  if (!select || !description) return;
+  const impact = Math.max(0, Math.min(3, Number(select.value) || 0));
+  description.innerHTML = `<strong>${escapeHtml(impactLabels[impact])}</strong><span>${escapeHtml(impactDescriptions[impact])}</span>`;
+}
+
 function renderDomains() {
   const categoryLabels = {
     modulation: "感觉调节",
     sensorimotor: "感觉运动",
-    participation: "调节与参与"
+    participation: "调节与参与",
+    occupation: "活动参与",
+    performance: "作业表现技能",
+    selfcare: "生活自理",
+    communication: "沟通功能",
+    speech: "言语功能",
+    feeding: "进食安全筛查",
+    movement: "运动功能"
   };
-  domainList.innerHTML = domains.map((domain, index) => `
-    <details class="domain-card" data-domain-card="${domain.id}" data-category="${domain.category}" ${index === 0 ? "open" : ""}>
+  const moduleSequence = Object.fromEntries(professionalModules.map((module) => [module.id, 0]));
+  domainList.innerHTML = domains.map((domain) => {
+    moduleSequence[domain.professional] += 1;
+    const domainNumber = moduleSequence[domain.professional];
+    return `
+    <details class="domain-card" data-domain-card="${domain.id}" data-category="${domain.category}" data-professional="${domain.professional}">
       <summary class="domain-summary">
         <span class="domain-title-block">
-          <span class="domain-number">${String(index + 1).padStart(2, "0")}</span>
+          <span class="domain-number">${String(domainNumber).padStart(2, "0")}</span>
           <span>
-            <h3>${escapeHtml(domain.title)}</h3>
-            <p>${escapeHtml(categoryLabels[domain.category])} · ${escapeHtml(domain.scope)}</p>
+            <h3>${escapeHtml(domain.title)} <i class="professional-tag">${escapeHtml(moduleById(domain.professional).short)}</i></h3>
+            <p>${escapeHtml(moduleById(domain.professional).label)} · ${escapeHtml(categoryLabels[domain.category])} · ${escapeHtml(domain.scope)}</p>
           </span>
         </span>
         <span class="domain-score-summary">
-          <span class="domain-average"><strong id="${domain.id}Average">—</strong><span id="${domain.id}Answered">0/5项</span></span>
+          <span class="domain-average"><strong id="${domain.id}Average">—</strong><span id="${domain.id}Answered">0/${domain.items.length}项</span></span>
           <span class="domain-state" id="${domain.id}State">未评</span>
           <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </span>
       </summary>
       <div class="domain-body">
         <div class="domain-controls">
+          <div class="domain-owner"><span>模块主评</span><strong data-domain-owner="${domain.professional}">未填写</strong></div>
           <div class="impact-control">
             <label for="${domain.id}Support">当前主要支持</label>
             <select id="${domain.id}Support" data-domain-support="${domain.id}">
@@ -447,13 +416,15 @@ function renderDomains() {
               <option>自然情境独立</option>
             </select>
           </div>
-          <div class="impact-control">
-            <label for="${domain.id}Impact">对参与的影响</label>
+          <div class="impact-control impact-participation-control">
+            <label for="${domain.id}Impact">对课堂、生活和活动参与的影响</label>
             <select id="${domain.id}Impact" data-domain-impact="${domain.id}">
               ${impactLabels.map((label, impact) => `<option value="${impact}">${escapeHtml(label)}</option>`).join("")}
             </select>
           </div>
         </div>
+        <div class="impact-description" data-impact-description="${domain.id}"></div>
+        <p class="domain-validity-note">本领域共${domain.items.length}项，至少完成${domain.minimumItems}项才形成领域分；未观察项目保留“未评”。</p>
         <div class="item-table">
           ${domain.items.map((item) => `
             <div class="item-row">
@@ -472,7 +443,32 @@ function renderDomains() {
         </div>
       </div>
     </details>
-  `).join("");
+  `;
+  }).join("");
+  domains.forEach((domain) => updateImpactDescription(domain.id));
+}
+
+function renderModuleCatalog(moduleId) {
+  const catalogDomains = moduleId === "all" ? domains : domains.filter((domain) => domain.professional === moduleId);
+  const title = document.getElementById("moduleCatalogTitle");
+  const count = document.getElementById("moduleCatalogCount");
+  const guidance = document.getElementById("moduleCatalogGuidance");
+  const list = document.getElementById("moduleCatalogList");
+  if (!title || !count || !guidance || !list) return;
+
+  const itemCount = catalogDomains.reduce((sum, domain) => sum + domain.items.length, 0);
+  title.textContent = moduleId === "all" ? "四专业完整领域" : `${moduleById(moduleId).label}评估目录`;
+  count.textContent = `${catalogDomains.length}个领域 · ${itemCount}项观察`;
+  guidance.textContent = moduleId === "all"
+    ? "四个专业由各自主评人员完成；点击领域名称可直接定位，未评模块不会被解释为没有需要。"
+    : `每个领域至少完成60%的项目才形成领域分；${moduleById(moduleId).label}的未观察项目请保留“未评”。`;
+  const moduleIndexes = Object.fromEntries(professionalModules.map((module) => [module.id, 0]));
+  list.innerHTML = catalogDomains.map((domain) => {
+    const originalIndex = domains.filter((item) => item.professional === domain.professional).findIndex((item) => item.id === domain.id) + 1;
+    moduleIndexes[domain.professional] += 1;
+    const number = moduleId === "all" ? `${moduleById(domain.professional).short} ${String(originalIndex).padStart(2, "0")}` : String(moduleIndexes[domain.professional]).padStart(2, "0");
+    return `<button type="button" data-jump-domain="${domain.id}"><span>${escapeHtml(number)}</span><b>${escapeHtml(domain.title)}</b></button>`;
+  }).join("");
 }
 
 function updateRatingFeedback(scale) {
@@ -500,6 +496,8 @@ function updateRatingFeedback(scale) {
 
 function collectData() {
   const observationSources = Array.from(form.querySelectorAll('input[name="observationSources"]:checked')).map((input) => input.value);
+  const signedInEvaluator = teamSession?.user?.displayName || "";
+  const assessmentDate = form.assessmentDate.value || today();
   const data = {
     id: activeId,
     studentName: form.studentName.value.trim(),
@@ -509,7 +507,7 @@ function collectData() {
     className: form.className.value.trim(),
     organizationName: form.organizationName.value.trim(),
     primaryNeed: form.primaryNeed.value,
-    assessmentDate: form.assessmentDate.value || today(),
+    assessmentDate,
     evaluator: form.evaluator.value.trim(),
     reviewer: form.reviewer.value.trim(),
     setting: form.setting.value,
@@ -519,6 +517,23 @@ function collectData() {
     observationSources,
     background: form.background.value.trim(),
     medicalPrecautions: form.medicalPrecautions.value.trim(),
+    professionalAssessors: Object.fromEntries(professionalModules.map((module) => [module.id, {
+      evaluator: module.id === activeModulePage
+        ? signedInEvaluator
+        : String(document.getElementById(`${module.id}Evaluator`)?.value || "").trim(),
+      assessmentDate: module.id === activeModulePage
+        ? assessmentDate
+        : document.getElementById(`${module.id}AssessmentDate`)?.value || "",
+      contributors: module.id === activeModulePage
+        ? Array.from(new Set([
+            ...(Array.isArray(document.getElementById(`${module.id}Evaluator`)?.dataset.contributors)
+              ? document.getElementById(`${module.id}Evaluator`).dataset.contributors
+              : String(document.getElementById(`${module.id}Evaluator`)?.dataset.contributors || "").split("|").filter(Boolean)),
+            signedInEvaluator
+          ].filter(Boolean)))
+        : String(document.getElementById(`${module.id}Evaluator`)?.dataset.contributors || "").split("|").filter(Boolean)
+    }])),
+    catalogVersion: ASSESSMENT_CATALOG_VERSION,
     domains: {},
     updatedAt: new Date().toISOString()
   };
@@ -530,6 +545,7 @@ function collectData() {
       items[item.id] = scale?.dataset.value ? Number(scale.dataset.value) : null;
     });
     data.domains[domain.id] = {
+      professional: domain.professional,
       items,
       impact: Number(document.getElementById(`${domain.id}Impact`).value || 0),
       support: document.getElementById(`${domain.id}Support`).value,
@@ -545,6 +561,7 @@ function setField(name, value) {
 }
 
 function applyData(data = {}) {
+  data = upgradeExpandedRecord(data) || {};
   activeId = data.id || null;
   setField("studentName", data.studentName || "");
   setField("studentCode", data.studentCode || "");
@@ -563,6 +580,29 @@ function applyData(data = {}) {
   setField("background", data.background || "");
   setField("medicalPrecautions", data.medicalPrecautions || "");
 
+  const assessors = data.professionalAssessors && typeof data.professionalAssessors === "object"
+    ? data.professionalAssessors
+    : defaultProfessionalAssessors(data.assessmentDate || today());
+  professionalModules.forEach((module) => {
+    const evaluatorField = document.getElementById(`${module.id}Evaluator`);
+    const dateField = document.getElementById(`${module.id}AssessmentDate`);
+    const legacyEvaluator = module.id === "si" ? data.evaluator || "" : "";
+    const currentEvaluator = module.id === activeModulePage && teamSession?.user?.displayName
+      ? teamSession.user.displayName
+      : assessors[module.id]?.evaluator || legacyEvaluator;
+    if (evaluatorField) {
+      evaluatorField.value = currentEvaluator;
+      evaluatorField.readOnly = true;
+      evaluatorField.dataset.contributors = (assessors[module.id]?.contributors || []).join("|");
+    }
+    if (dateField) {
+      dateField.value = module.id === activeModulePage
+        ? data.assessmentDate || today()
+        : assessors[module.id]?.assessmentDate || (legacyEvaluator ? data.assessmentDate || today() : "");
+      dateField.readOnly = true;
+    }
+  });
+
   const sources = Array.isArray(data.observationSources) ? data.observationSources : [];
   form.querySelectorAll('input[name="observationSources"]').forEach((input) => {
     input.checked = sources.includes(input.value);
@@ -580,6 +620,7 @@ function applyData(data = {}) {
     document.getElementById(`${domain.id}Impact`).value = String(value.impact ?? 0);
     document.getElementById(`${domain.id}Support`).value = value.support || "部分提示";
     document.getElementById(`${domain.id}Note`).value = value.note || "";
+    updateImpactDescription(domain.id);
   });
 
   document.getElementById("currentRecordTitle").textContent = data.studentName || data.studentCode || "新建学生评估";
@@ -603,16 +644,27 @@ function refreshAnalysis() {
   const data = collectData();
   const result = analyze(data);
   lastAnalysis = result;
+  const activeReadiness = result.moduleReadiness?.[activeModulePage];
+  const activeSummary = result.moduleSummaries?.[activeModulePage];
+  const activeRows = result.rows.filter((row) => row.professional === activeModulePage);
+  const activePriorityRows = (activeSummary?.priorityDomainIds || []).map((id) => activeRows.find((row) => row.id === id)).filter(Boolean);
+  const activeStrengthRows = (activeSummary?.strengthDomainIds || []).map((id) => activeRows.find((row) => row.id === id)).filter(Boolean);
+  const activeCoverage = activeReadiness?.coverage || 0;
+  const activeAverage = activeSummary?.average ?? null;
 
-  document.getElementById("coverageText").textContent = `${result.coverage}%`;
-  document.getElementById("coverageBar").style.width = `${result.coverage}%`;
-  document.getElementById("averageScore").textContent = result.average === null ? "—" : result.average.toFixed(1);
-  document.getElementById("overallLevel").textContent = result.level;
-  document.getElementById("overallSummary").textContent = result.summary;
-  document.getElementById("scoreRing").style.setProperty("--score-angle", `${result.average === null ? 0 : (result.average / 5) * 360}deg`);
+  document.getElementById("coverageText").textContent = `${activeCoverage}%`;
+  document.getElementById("coverageBar").style.width = `${activeCoverage}%`;
+  document.getElementById("averageScore").textContent = activeAverage === null ? "—" : activeAverage.toFixed(1);
+  document.getElementById("overallLevel").textContent = activeSummary?.level || "尚未形成结果";
+  const moduleLabel = moduleById(activeModulePage).label;
+  const moduleSummaryText = activeAverage === null
+    ? `${moduleLabel}已形成${activeSummary?.validDomainCount || 0}/${activeSummary?.totalDomainCount || 0}个有效领域；至少完成3个有效领域后生成本专业初步分析，达到${activeReadiness?.requiredDomainCount || 4}个后才参与个训分流。`
+    : `${moduleLabel}均分${activeAverage.toFixed(1)}，已形成${activeSummary.validDomainCount}/${activeSummary.totalDomainCount}个有效领域。相对优势：${activeStrengthRows.map((row) => row.title).join("、") || "待补充"}；优先关注：${activePriorityRows.map((row) => row.title).join("、") || "待复核"}。`;
+  document.getElementById("overallSummary").textContent = moduleSummaryText;
+  document.getElementById("scoreRing").style.setProperty("--score-angle", `${activeAverage === null ? 0 : (activeAverage / 5) * 360}deg`);
   const state = document.getElementById("analysisState");
-  state.textContent = result.average === null ? "等待评估" : `个别化 · ${result.validDomainCount}领域`;
-  state.classList.toggle("ready", result.average !== null);
+  state.textContent = activeAverage === null ? "等待本专业评估" : `个别化 · ${activeSummary.validDomainCount}领域`;
+  state.classList.toggle("ready", activeAverage !== null);
 
   domains.forEach((domain) => {
     const row = result.rows.find((item) => item.id === domain.id);
@@ -631,8 +683,8 @@ function refreshAnalysis() {
     }
   });
 
-  const tags = result.priorities.length
-    ? result.priorities.map((row) => `<span class="${row.average < 2.5 || row.impact >= 3 ? "urgent" : ""}">${escapeHtml(row.title)} ${row.average.toFixed(1)}</span>`).join("")
+  const tags = activePriorityRows.length
+    ? activePriorityRows.map((row) => `<span class="${row.average < 2.5 || row.impact >= 3 ? "urgent" : ""}">${escapeHtml(row.title)} ${row.average.toFixed(1)}</span>`).join("")
     : "<span>完成评估后显示优先领域</span>";
   document.getElementById("priorityTags").innerHTML = tags;
   renderList("strengthList", result.strengths);
@@ -641,11 +693,50 @@ function refreshAnalysis() {
   renderList("alertList", result.alerts);
   renderList("goalList", result.goals);
   renderList("strategyList", result.strategies);
+  renderCourseDecision(result);
+  renderProfessionalModuleStatus(result, data);
   queueDraftSave(data, result);
 }
 
 function renderList(id, values) {
   document.getElementById(id).innerHTML = values.map((value) => `<li>${escapeHtml(value)}</li>`).join("");
+}
+
+function renderProfessionalModuleStatus(result, data) {
+  professionalModules.forEach((module) => {
+    const readiness = result.moduleReadiness?.[module.id];
+    const assessor = data.professionalAssessors?.[module.id];
+    const evaluator = assessor?.evaluator || "";
+    document.querySelectorAll(`[data-domain-owner="${module.id}"]`).forEach((label) => {
+      label.textContent = evaluator || `${module.label}待分配`;
+    });
+    const status = document.querySelector(`[data-module-status="${module.id}"]`);
+    if (!status || !readiness) return;
+    status.textContent = `${readiness.validDomainCount}/${readiness.totalDomainCount}个有效领域 · ${readiness.coverage}%`;
+    status.classList.toggle("ready", readiness.ready);
+  });
+}
+
+function renderCourseDecision(result) {
+  const container = document.getElementById("courseRecommendationList");
+  const notes = document.getElementById("courseRecommendationNotes");
+  const readiness = document.getElementById("courseModuleReadiness");
+  if (!container || !notes || !readiness) return;
+  const recommendations = Array.isArray(result.courseRecommendations) ? result.courseRecommendations : [];
+  container.innerHTML = recommendations.length
+    ? recommendations.map((item) => `
+        <article class="course-recommendation course-${escapeHtml(item.courseId)}">
+          <div class="course-rank"><span>${escapeHtml(item.priorityLabel)}</span><strong>${escapeHtml(item.title)}</strong></div>
+          <p>${escapeHtml(item.rationale)}</p>
+          <dl><div><dt>建议聚焦</dt><dd>${escapeHtml(item.focus)}</dd></div><div><dt>需要指数</dt><dd>${Number(item.needIndex).toFixed(1)}</dd></div></dl>
+        </article>`).join("")
+    : '<div class="course-empty">当前尚未形成个训课推荐</div>';
+  readiness.innerHTML = professionalModules.map((module) => {
+    const item = result.moduleReadiness?.[module.id];
+    if (!item) return "";
+    return `<div class="module-readiness-item ${item.ready ? "ready" : "pending"}"><b>${escapeHtml(module.short)}</b><span>${item.ready ? "资料可用于分流" : "待补评"}</span><small>${item.validDomainCount}/${item.totalDomainCount}个有效领域 · 门槛${item.requiredDomainCount}个</small></div>`;
+  }).join("");
+  notes.innerHTML = (result.courseRecommendationNotes || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
 
 function saveRecordLocally(data, { render = true } = {}) {
@@ -661,8 +752,8 @@ function saveRecordLocally(data, { render = true } = {}) {
   if (index >= 0) records[index] = data;
   else records.push(data);
   if (render) persistRecords();
-  else localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-  localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  else localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(records));
+  localStorage.setItem(scopedStorageKey(DRAFT_KEY), JSON.stringify(data));
   document.getElementById("currentRecordTitle").textContent = data.studentName || data.studentCode;
   document.getElementById("lastSavedText").textContent = `更新于 ${formatDateTime(now)}`;
   return data;
@@ -696,11 +787,6 @@ function queueCloudSync(data, analysis, { immediate = false } = {}) {
     updateSyncStatus("pending", "已保存本机 · 协作编号需同时包含字母和数字");
     return;
   }
-  if (analysis.validDomainCount < 3) {
-    updateSyncStatus("pending", "已自动保存本机 · 完成3个有效领域后上传");
-    return;
-  }
-
   const signature = syncSignature(data, analysis);
   if (signature === lastSyncedSignature) return;
   const elapsed = Date.now() - lastCloudSyncAt;
@@ -713,7 +799,7 @@ function queueDraftSave(data, analysis) {
   clearTimeout(draftTimer);
   document.getElementById("draftState").textContent = "正在自动保存";
   draftTimer = setTimeout(() => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    localStorage.setItem(scopedStorageKey(DRAFT_KEY), JSON.stringify(data));
     const saved = saveRecordLocally(data);
     document.getElementById("draftState").textContent = saved ? "已自动保存" : "草稿已自动暂存";
     if (saved) queueCloudSync(saved, analysis);
@@ -721,7 +807,7 @@ function queueDraftSave(data, analysis) {
 }
 
 function persistRecords() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(records));
   renderRecords();
 }
 
@@ -786,11 +872,6 @@ async function syncRecord(data, analysis, { silent = false, signature = syncSign
     if (!silent) showToast("本机已保存；请填写字母加数字的内部协作编号，如 KFB-027。 ");
     return;
   }
-  if (analysis.validDomainCount < 3) {
-    updateSyncStatus("pending", "已自动保存本机 · 完成3个有效领域后上传");
-    return;
-  }
-
   updateSyncStatus("enabled", "正在安全同步…");
   try {
     const payload = prepareCloudPayload(data, analysis);
@@ -801,6 +882,7 @@ async function syncRecord(data, analysis, { silent = false, signature = syncSign
       body: JSON.stringify({
         consent: true,
         deidentified: true,
+        module: activeModulePage,
         record: payload.record,
         analysis: payload.analysis
       }),
@@ -813,17 +895,27 @@ async function syncRecord(data, analysis, { silent = false, signature = syncSign
       throw error;
     }
     lastCloudSyncAt = Date.now();
+    if (result.clientRecordId && result.clientRecordId !== data.id) {
+      const previousId = data.id;
+      data.id = result.clientRecordId;
+      activeId = result.clientRecordId;
+      records = records.filter((record) => record.id !== result.clientRecordId || record.id === previousId);
+      const localIndex = records.findIndex((record) => record.id === previousId);
+      if (localIndex >= 0) records[localIndex] = data;
+      persistRecords();
+    }
+    data.cloudVersion = result.version || data.cloudVersion;
     cloudSettings.lastSyncedAt = new Date(lastCloudSyncAt).toISOString();
     persistCloudSettings();
     lastSyncedSignature = signature;
-    updateSyncStatus("enabled", `去标识化记录已上传 · v${result.version || "—"} · ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
-    if (!silent) showToast("云端同步完成。 ");
+    updateSyncStatus("enabled", `自动云备份已完成 · v${result.version || "—"} · ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
+    if (result.reviewRequired) showToast(result.reviewMessage || "本专业已有其他评估者记录，请团队复核新旧版本。 ");
+    else if (!silent) showToast("云端同步完成。 ");
   } catch (error) {
-    if (error.status === 401 || error.status === 403) {
+    if (error.status === 401 || error.status === 403 || error.status === 428) {
       teamSession = null;
-      updateSyncStatus("error", "团队登录已失效 · 本机保存不受影响");
-      refreshCloudUi();
-      if (!silent) showToast("团队登录已失效，请重新登录。 ");
+      updateSyncStatus("error", "登录状态已失效，正在返回登录页");
+      redirectToTeam(error.status === 428 ? "password" : "login");
       return;
     }
     updateSyncStatus("error", error.message || "云端暂时不可用");
@@ -875,7 +967,7 @@ function safeFilename(value) {
 function exportCurrentJson() {
   const data = collectData();
   const payload = { version: 2, exportedAt: new Date().toISOString(), record: data, analysis: analyze(data) };
-  downloadFile(`${safeFilename(data.studentName || data.studentCode)}-感觉统合评估.json`, JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+  downloadFile(`${safeFilename(data.studentName || data.studentCode)}-学生功能评估.json`, JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
   showToast("已导出当前评估 JSON。 ");
 }
 
@@ -886,10 +978,11 @@ function csvCell(value) {
 function exportAllCsv() {
   const source = records.length ? records : [collectData()];
   const header = [
-    "姓名", "学生编号", "性别", "年龄", "班级", "机构/学校", "主要发展需要", "评估日期", "评估人", "复核人", "主要情境", "观察来源", "综合分", "完成度", "总体等级",
+    "姓名", "学生编号", "性别", "年龄", "班级", "机构/学校", "主要发展需要", "评估日期", "报告统筹人", "复核人", "主要情境", "观察来源", "功能观察均分", "完成度", "总体等级",
+    ...professionalModules.flatMap((module) => [`${module.label}${module.short}主评人`, `${module.label}${module.short}评估日期`]),
     ...domains.map((domain) => `${domain.title}均分`),
     ...domains.map((domain) => `${domain.title}参与影响`),
-    "优势摘要", "支持需要", "阶段目标"
+    "优势摘要", "支持需要", "阶段目标", "个训课建议"
   ];
   const rows = source.map((record) => {
     const result = analyze(record);
@@ -897,64 +990,75 @@ function exportAllCsv() {
       record.studentName, record.studentCode, record.gender, record.age, record.className, record.organizationName, record.primaryNeed,
       record.assessmentDate, record.evaluator, record.reviewer, record.setting, (record.observationSources || []).join("、"),
       result.average === null ? "" : result.average.toFixed(2), `${result.coverage}%`, result.level,
+      ...professionalModules.flatMap((module) => [record.professionalAssessors?.[module.id]?.evaluator || "", record.professionalAssessors?.[module.id]?.assessmentDate || ""]),
       ...domains.map((domain) => {
         const row = result.rows.find((item) => item.id === domain.id);
         return row?.valid ? row.average.toFixed(2) : "";
       }),
       ...domains.map((domain) => impactLabels[record.domains?.[domain.id]?.impact || 0]),
-      result.strengths.join("；"), result.needs.join("；"), result.goals.join("；")
+      result.strengths.join("；"), result.needs.join("；"), result.goals.join("；"), result.courseRecommendations.map((item) => `${item.priorityLabel}：${item.title}`).join("；")
     ];
   });
   const csv = "\ufeff" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-  downloadFile(`感觉统合评估数据-${today()}.csv`, csv, "text/csv;charset=utf-8");
+  downloadFile(`学生功能评估数据-${today()}.csv`, csv, "text/csv;charset=utf-8");
   showToast("已导出 CSV 数据。 ");
 }
 
 function buildReportHtml(record) {
   const result = analyze(record);
-  const domainSections = result.rows.map((row) => {
+  const domainSections = result.rows.filter((row) => row.answered > 0).map((row) => {
     const itemRows = row.itemScores.map((item) => `
       <tr><td>${escapeHtml(item.label)}</td><td>${item.score === null ? "未评" : `${item.score} · ${scoreLevels[item.score].label}`}</td></tr>
     `).join("");
     return `
       <section class="domain-report">
-        <h3>${escapeHtml(row.title)} <span>${row.average === null ? "未形成领域分" : `${row.average.toFixed(1)}分 · ${impactLabels[row.impact]}`}</span></h3>
+        <h3>${escapeHtml(row.title)} <small>${escapeHtml(moduleById(row.professional).short)}</small><span>${row.average === null ? "未形成领域分" : `${row.average.toFixed(1)}分 · ${impactLabels[row.impact]}`}</span></h3>
         <table><thead><tr><th>可观察表现</th><th>评分</th></tr></thead><tbody>${itemRows}</tbody></table>
         ${row.note ? `<p><b>观察记录：</b>${escapeHtml(row.note)}</p>` : ""}
       </section>
     `;
   }).join("");
   const list = (items) => `<ol>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`;
+  const courseLines = result.courseRecommendations.length
+    ? result.courseRecommendations.map((item) => `${item.priorityLabel}：${item.title}。${item.rationale}建议聚焦：${item.focus}。`)
+    : result.courseRecommendationNotes.slice(0, 1);
+  const assessorRows = professionalModules.map((module) => {
+    const assessor = record.professionalAssessors?.[module.id] || {};
+    const readiness = result.moduleReadiness?.[module.id] || {};
+    const contributors = Array.from(new Set([...(assessor.contributors || []), assessor.evaluator].filter(Boolean)));
+    return `<tr><td>${escapeHtml(`${module.label} ${module.short}`)}</td><td>${escapeHtml(assessor.evaluator || "未填写")}</td><td>${escapeHtml(contributors.join("、") || "未填写")}</td><td>${escapeHtml(assessor.assessmentDate || "未填写")}</td><td>${readiness.validDomainCount || 0}/${readiness.totalDomainCount || 0}个有效领域</td></tr>`;
+  }).join("");
   const titleName = record.studentName || record.studentCode || "学生";
-  const organizationName = record.organizationName || "知衡特殊教育康复评估";
-  const htmlReportNumber = `ZH-SI-${String(record.assessmentDate || today()).replaceAll("-", "")}-${String(record.studentCode || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "REPORT"}`;
+  const organizationName = record.organizationName || "知衡学生功能评估与康复支持";
+  const htmlReportNumber = `ZH-FR-${String(record.assessmentDate || today()).replaceAll("-", "")}-${String(record.studentCode || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "REPORT"}`;
 
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(titleName)}-感觉统合功能评估报告</title>
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(titleName)}-学生功能评估与康复支持报告</title>
   <style>
     body{margin:0;padding:30px;color:#1f2a33;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.7}
     header{text-align:center;border-bottom:2px solid #167b72;padding-bottom:14px}.org{color:#294858;font-weight:800;letter-spacing:0}h1{margin:7px 0 0;font-size:27px}header p{margin:5px 0 0;color:#687782}
-    h2{margin:24px 0 9px;font-size:19px;border-bottom:1px solid #dfe5e8;padding-bottom:6px}h3{margin:16px 0 7px;font-size:16px}h3 span{float:right;color:#53616c;font-size:13px;font-weight:500}
+    h2{margin:24px 0 9px;font-size:19px;border-bottom:1px solid #dfe5e8;padding-bottom:6px}h3{margin:16px 0 7px;font-size:16px}h3 small{margin-left:6px;color:#356b8c}h3 span{float:right;color:#53616c;font-size:13px;font-weight:500}
     .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;margin:18px 0;padding:13px;border:1px solid #dfe5e8;background:#f8fafb}.meta b{color:#65737d}
     .score{font-size:28px;color:#167b72;font-weight:800}.notice{padding:9px 11px;border-left:4px solid #356b8c;background:#e8f0f6;color:#405f73}
     table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:8px;border:1px solid #dfe5e8;text-align:left;vertical-align:top}th{background:#f3f5f7}.domain-report{break-inside:avoid}
     ol{margin:8px 0;padding-left:25px}li{margin:6px 0;padding-left:3px}li::marker{color:#167b72;font-weight:800}.signatures{display:grid;grid-template-columns:repeat(3,1fr);margin-top:22px;border:1px solid #dfe5e8}.signatures div{min-height:80px;padding:12px;border-right:1px solid #dfe5e8}.signatures div:last-child{border-right:0}.foot{margin-top:25px;color:#77838d;font-size:12px}
     @media print{body{padding:0}.domain-report{break-inside:avoid}}
   </style></head><body>
-  <header><div class="org">${escapeHtml(organizationName)}</div><h1>感觉统合功能评估报告</h1><p>学生标识：${escapeHtml(titleName)} · 报告编号：${escapeHtml(htmlReportNumber)} · ${escapeHtml(record.assessmentDate || today())}</p></header>
-  <p class="notice">本报告由功能性观察数据自动整理，不是标准化常模量表，不能替代医学诊断或完整作业治疗评估。</p>
+  <header><div class="org">${escapeHtml(organizationName)}</div><h1>学生功能评估与康复支持报告</h1><p>学生标识：${escapeHtml(titleName)} · 报告编号：${escapeHtml(htmlReportNumber)} · ${escapeHtml(record.assessmentDate || today())}</p></header>
+  <p class="notice">本报告由多专业学校场景功能性观察数据自动整理，用于团队讨论目标与服务分流；不是标准化常模量表，不能替代医学诊断或各专业完整评估。</p>
   <div class="meta">
     <div><b>学生编号：</b>${escapeHtml(record.studentCode || "未填写")}</div><div><b>年龄：</b>${escapeHtml(record.age || "未填写")}</div><div><b>性别：</b>${escapeHtml(record.gender || "未填写")}</div>
-    <div><b>班级：</b>${escapeHtml(record.className || "未填写")}</div><div><b>主要发展需要：</b>${escapeHtml(record.primaryNeed || "未填写")}</div><div><b>评估人：</b>${escapeHtml(record.evaluator || "未填写")}</div>
+    <div><b>班级：</b>${escapeHtml(record.className || "未填写")}</div><div><b>主要发展需要：</b>${escapeHtml(record.primaryNeed || "未填写")}</div><div><b>报告统筹人：</b>${escapeHtml(record.evaluator || "未填写")}</div>
     <div><b>主要情境：</b>${escapeHtml(record.setting || "未填写")}</div><div><b>观察来源：</b>${escapeHtml((record.observationSources || []).join("、") || "未填写")}</div><div><b>完成度：</b>${result.coverage}%</div>
-    <div><b>综合分：</b><span class="score">${result.average === null ? "—" : result.average.toFixed(1)}</span></div><div><b>总体等级：</b>${escapeHtml(result.level)}</div><div><b>分析可信度：</b>${escapeHtml(result.confidence)}</div>
+    <div><b>功能观察均分：</b><span class="score">${result.average === null ? "—" : result.average.toFixed(1)}</span></div><div><b>总体等级：</b>${escapeHtml(result.level)}</div><div><b>分析可信度：</b>${escapeHtml(result.confidence)}</div>
   </div>
+  <h2>多专业评估分工与完成情况</h2><table><thead><tr><th>专业模块</th><th>最近提交者</th><th>参与评估人员</th><th>日期</th><th>完成情况</th></tr></thead><tbody>${assessorRows}</tbody></table>
   <h2>评估摘要</h2><p>${escapeHtml(result.summary)}</p>
   <h2>个别化分析依据</h2>${list(result.basis)}
   <h2>背景、安全与解释</h2><p><b>主要关切：</b>${escapeHtml(record.background || "未填写")}</p><p><b>医疗与安全：</b>${escapeHtml(record.medicalPrecautions || "未填写")}</p>${list(result.alerts)}
-  <h2>相对优势</h2>${list(result.strengths)}<h2>优先支持需要</h2>${list(result.needs)}<h2>8周阶段目标</h2>${list(result.goals)}<h2>训练、课堂与生活支持</h2>${list(result.strategies)}
+  <h2>相对优势</h2>${list(result.strengths)}<h2>优先支持需要</h2>${list(result.needs)}<h2>个训课分流建议</h2>${list(courseLines)}${list(result.courseRecommendationNotes)}<h2>8周阶段目标</h2>${list(result.goals)}<h2>训练、课堂与生活支持</h2>${list(result.strategies)}
   <h2>领域与项目明细</h2>${domainSections}
-  <h2>专业人员确认</h2><div class="signatures"><div><b>评估人签名</b><br>${escapeHtml(record.evaluator || "")}</div><div><b>复核人签名</b><br>${escapeHtml(record.reviewer || "")}</div><div><b>机构盖章</b></div></div>
-  <p class="foot">评分：1全程协助，2大量协助，3部分提示，4少量提示，5独立稳定；每个领域至少完成3项才形成领域分。建议由具备相关专业能力的人员结合多情境观察、家庭优先事项和跨专业资料解释。</p>
+  <h2>专业人员确认</h2><div class="signatures"><div><b>报告统筹人签名</b><br>${escapeHtml(record.evaluator || "")}</div><div><b>复核人签名</b><br>${escapeHtml(record.reviewer || "")}</div><div><b>机构盖章</b></div></div>
+  <p class="foot">评分：1全程协助，2大量协助，3部分提示，4少量提示，5独立稳定；每个领域至少完成60%的项目才形成领域分。建议由具备相关专业能力的人员结合多情境观察、家庭优先事项和跨专业资料解释。</p>
   </body></html>`;
 }
 
@@ -976,7 +1080,8 @@ async function createCurrentDocxFile() {
   if (!globalThis.docx?.Packer) throw new Error("Word 报告组件尚未加载，请刷新页面后重试。");
   const row = reportRow(data, analysis);
   const filename = assessmentReportFilename(row);
-  const documentFile = buildAssessmentReportDocument(row, globalThis.docx);
+  const fontData = await loadReportFontData();
+  const documentFile = buildAssessmentReportDocument(row, globalThis.docx, fontData);
   const blob = await globalThis.docx.Packer.toBlob(documentFile);
   const file = typeof File === "function"
     ? new File([blob], filename, { type: DOCX_MIME, lastModified: Date.now() })
@@ -1147,7 +1252,7 @@ async function sharePreparedReportLink() {
   }
   try {
     await navigator.share({
-      title: "感觉统合功能评估报告",
+      title: "学生功能评估与康复支持报告",
       text: "请在24小时内打开链接并下载 Word 评估报告。",
       url: preparedReportLink.shareUrl
     });
@@ -1182,6 +1287,7 @@ function importJson(file) {
       const incoming = source
         .filter((item) => item && typeof item === "object")
         .map((item) => item.domains && Object.values(item.domains).some((domain) => domain?.items) ? item : migrateLegacyRecord(item))
+        .map(upgradeExpandedRecord)
         .map((item) => ({ ...item, id: item.id || uid(), updatedAt: item.updatedAt || new Date().toISOString() }));
       if (!incoming.length) throw new Error("empty");
       incoming.forEach((item) => {
@@ -1207,11 +1313,7 @@ function updateSyncStatus(state, message) {
 
 async function syncNow() {
   if (!teamSession) {
-    openConsentDialog();
-    return;
-  }
-  if (!cloudSettings.enabled) {
-    openConsentDialog();
+    redirectToTeam("login");
     return;
   }
   const button = document.getElementById("syncNowBtn");
@@ -1226,57 +1328,77 @@ async function syncNow() {
 }
 
 function refreshCloudUi() {
-  cloudToggle.checked = Boolean(teamSession && cloudSettings.enabled);
+  cloudToggle.checked = Boolean(teamSession);
+  cloudToggle.disabled = true;
   const description = document.getElementById("cloudDescription");
   const syncButtonLabel = document.querySelector("#syncNowBtn span");
   if (!teamSession) {
-    description.textContent = "登录团队后可启用去标识化云备份";
-    updateSyncStatus("pending", "未登录团队 · 当前仅保存在本机");
+    description.textContent = "正在验证团队登录状态";
+    updateSyncStatus("pending", "登录验证中");
     syncButtonLabel.textContent = "登录团队";
     return;
   }
-  if (!cloudSettings.enabled) {
-    description.textContent = `${teamSession.user.displayName} 已登录；云备份未启用`;
-    updateSyncStatus("", "未启用 · 当前仅保存在本机");
-    syncButtonLabel.textContent = "启用同步";
-    return;
-  }
-  description.textContent = `已同步至 ${teamSession.team.name}`;
+  description.textContent = `${teamSession.user.displayName} · ${teamSession.user.primaryModuleLabel} · 自动云备份`;
   const lastSync = cloudSettings.lastSyncedAt ? ` · 上次 ${formatDateTime(cloudSettings.lastSyncedAt)}` : " · 等待首次同步";
-  updateSyncStatus("enabled", `去标识化同步已启用${lastSync}`);
+  updateSyncStatus("enabled", `登录后自动同步已开启${lastSync}`);
   syncButtonLabel.textContent = "立即同步";
 }
 
 function openConsentDialog() {
   if (!teamSession) {
-    showToast("请先登录团队工作台。 ");
-    const target = location.protocol === "file:" || location.hostname === "jintang6.github.io"
-      ? `${API_ORIGIN}/team.html?return=index`
-      : "./team.html?return=index";
-    setTimeout(() => { location.href = target; }, 350);
+    redirectToTeam("login");
     return;
   }
-  document.getElementById("consentAuthority").checked = false;
-  document.getElementById("confirmCloudBtn").disabled = true;
   consentDialog.showModal();
+}
+
+function moduleRoute(moduleId = activeModulePage) {
+  return { si: "/", ot: "/ot/", st: "/st/", pt: "/movement/" }[moduleId] || "/";
+}
+
+function redirectToTeam(reason = "login") {
+  const origin = location.protocol === "file:" || location.hostname === "jintang6.github.io" ? API_ORIGIN : "";
+  const target = new URL(`${origin || location.origin}/team.html`);
+  target.searchParams.set("return", moduleRoute());
+  target.searchParams.set("reason", reason);
+  location.replace(target.toString());
 }
 
 async function loadTeamSession() {
   if (location.protocol === "file:" || location.hostname === "jintang6.github.io") {
-    teamSession = null;
-    refreshCloudUi();
-    return;
+    redirectToTeam("login");
+    return false;
   }
   try {
     const response = await fetch(`${API_ORIGIN}/api/team/session`, {
       credentials: "include",
       headers: { Accept: "application/json" }
     });
-    teamSession = response.ok ? await response.json() : null;
+    if (!response.ok) {
+      redirectToTeam(response.status === 428 ? "password" : "login");
+      return false;
+    }
+    teamSession = await response.json();
   } catch {
-    teamSession = null;
+    redirectToTeam("unavailable");
+    return false;
   }
+  if (teamSession.user.passwordChangeRequired) {
+    redirectToTeam("password");
+    return false;
+  }
+  const allowedModules = teamSession.user.role === "admin" ? professionalModules.map((module) => module.id) : teamSession.user.moduleAccess || [];
+  if (!allowedModules.includes(activeModulePage)) {
+    redirectToTeam("module");
+    return false;
+  }
+  cloudSettings = loadCloudSettings();
+  cloudSettings.enabled = true;
+  cloudSettings.consentAt ||= new Date().toISOString();
+  persistCloudSettings();
+  lastCloudSyncAt = cloudSettings.lastSyncedAt ? new Date(cloudSettings.lastSyncedAt).getTime() : 0;
   refreshCloudUi();
+  return true;
 }
 
 function takeTeamRecordTransfer() {
@@ -1329,6 +1451,78 @@ function configureRuntimeUi() {
   document.getElementById("printActionLabel").textContent = "发送报告";
 }
 
+function configureModulePage() {
+  const copy = professionalPageCopy[activeModulePage];
+  document.body.dataset.modulePage = activeModulePage;
+  document.body.classList.add(`module-page-${activeModulePage}`);
+  document.title = copy.title;
+  const metaDescription = document.querySelector('meta[name="description"]');
+  if (metaDescription) metaDescription.content = `${copy.product}，与知衡其他专业入口共享学生档案、云端协作和综合报告。`;
+  document.getElementById("productLabel").textContent = copy.product;
+  document.getElementById("productSubtitle").textContent = copy.subtitle;
+  document.getElementById("methodIntro").innerHTML = `${copy.intro} 不替代标准化量表或医学诊断。`;
+  document.getElementById("assessmentModuleHeading").textContent = copy.heading;
+  const counts = domainCounts[activeModulePage];
+  document.getElementById("assessmentModuleDescription").textContent = `${copy.description} 本模块包含${counts.domains}个领域、${counts.items}项可观察项目。`;
+
+  document.querySelectorAll("[data-module-link]").forEach((link) => {
+    const active = link.dataset.moduleLink === activeModulePage;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  document.querySelectorAll("[data-module-assignment]").forEach((card) => card.classList.toggle("active", card.dataset.moduleAssignment === activeModulePage));
+  document.querySelectorAll("#categoryFilter button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.professional === activeModulePage);
+    button.hidden = button.dataset.professional !== activeModulePage;
+  });
+  document.querySelectorAll(".domain-card").forEach((card) => {
+    const active = card.dataset.professional === activeModulePage;
+    card.hidden = !active;
+    card.open = false;
+  });
+  const first = document.querySelector(`.domain-card[data-professional="${activeModulePage}"]`);
+  if (first) first.open = true;
+  renderModuleCatalog(activeModulePage);
+}
+
+function closeDrawer() {
+  document.body.classList.remove("drawer-open");
+  document.getElementById("appDrawer").setAttribute("aria-hidden", "true");
+  document.getElementById("appMenuBtn").setAttribute("aria-expanded", "false");
+  document.getElementById("drawerBackdrop").hidden = true;
+}
+
+function openDrawer() {
+  document.body.classList.add("drawer-open");
+  document.getElementById("appDrawer").setAttribute("aria-hidden", "false");
+  document.getElementById("appMenuBtn").setAttribute("aria-expanded", "true");
+  document.getElementById("drawerBackdrop").hidden = false;
+}
+
+function configureAccountNavigation() {
+  const user = teamSession.user;
+  document.getElementById("drawerAvatar").textContent = user.displayName.slice(0, 1) || "知";
+  document.getElementById("drawerUserName").textContent = user.displayName;
+  document.getElementById("drawerUserRole").textContent = `${user.roleLabel} · ${user.primaryModuleLabel}`;
+  document.getElementById("drawerUserEmail").textContent = user.email;
+  document.getElementById("drawerAssignment").textContent = user.assignmentNote || "可查看本部门学生档案与专业评估记录。";
+  const canOpenDataAdmin = user.isSuperAdmin === true;
+  document.getElementById("drawerAdminLink").hidden = !canOpenDataAdmin;
+  document.getElementById("headerAdminLink").hidden = !canOpenDataAdmin;
+  const allowedModules = user.role === "admin" ? professionalModules.map((module) => module.id) : user.moduleAccess || [];
+  document.querySelectorAll("[data-module-link]").forEach((link) => {
+    link.hidden = !allowedModules.includes(link.dataset.moduleLink);
+  });
+  document.querySelectorAll("[data-drawer-module]").forEach((link) => {
+    const allowed = allowedModules.includes(link.dataset.drawerModule);
+    link.classList.toggle("locked", !allowed);
+    link.setAttribute("aria-disabled", String(!allowed));
+    if (!allowed) link.title = "当前账号未获授权填写此专业模块";
+  });
+  document.getElementById("automaticAssessorNote").textContent = `${user.displayName} 已由系统自动署名为本次${moduleById(activeModulePage).label}评估者；提交后同步到团队云端。`;
+}
+
 function configureFixedHeader() {
   if (!appHeader) return;
 
@@ -1366,16 +1560,32 @@ function attachEvents() {
     refreshAnalysis();
   });
 
+  domainList.addEventListener("change", (event) => {
+    const select = event.target.closest("[data-domain-impact]");
+    if (select) updateImpactDescription(select.dataset.domainImpact);
+  });
+
+  document.getElementById("moduleCatalogList").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-jump-domain]");
+    if (!button) return;
+    const card = document.querySelector(`[data-domain-card="${button.dataset.jumpDomain}"]`);
+    if (!card) return;
+    card.hidden = false;
+    card.open = true;
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
   form.addEventListener("input", refreshAnalysis);
   form.addEventListener("change", refreshAnalysis);
 
   document.getElementById("categoryFilter").addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-category]");
+    const button = event.target.closest("button[data-professional]");
     if (!button) return;
     document.querySelectorAll("#categoryFilter button").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".domain-card").forEach((card) => {
-      card.hidden = button.dataset.category !== "all" && card.dataset.category !== button.dataset.category;
+      card.hidden = button.dataset.professional !== "all" && card.dataset.professional !== button.dataset.professional;
     });
+    renderModuleCatalog(button.dataset.professional);
   });
 
   document.querySelector(".result-tabs").addEventListener("click", (event) => {
@@ -1383,6 +1593,11 @@ function attachEvents() {
     if (!button) return;
     document.querySelectorAll(".result-tabs button").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".result-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.resultPanel === button.dataset.resultTab));
+  });
+
+  document.getElementById("showSummaryBtn").addEventListener("click", () => {
+    document.querySelector('[data-result-tab="courses"]')?.click();
+    document.querySelector(".insights-column")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   recordList.addEventListener("click", (event) => {
@@ -1415,40 +1630,70 @@ function attachEvents() {
   });
 
   document.getElementById("methodBtn").addEventListener("click", () => methodDialog.showModal());
-  document.querySelectorAll(".close-dialog").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
-  document.getElementById("privacyManageBtn").addEventListener("click", openConsentDialog);
-
-  cloudToggle.addEventListener("change", () => {
-    if (!teamSession) {
-      cloudToggle.checked = false;
-      openConsentDialog();
+  document.getElementById("appMenuBtn").addEventListener("click", () => document.body.classList.contains("drawer-open") ? closeDrawer() : openDrawer());
+  document.getElementById("closeDrawerBtn").addEventListener("click", closeDrawer);
+  document.getElementById("drawerBackdrop").addEventListener("click", closeDrawer);
+  document.getElementById("appDrawer").addEventListener("click", (event) => {
+    const lockedLink = event.target.closest("a.locked");
+    if (lockedLink) {
+      event.preventDefault();
+      showToast("当前账号未获授权填写该专业模块。 ");
       return;
     }
-    if (cloudToggle.checked) {
-      cloudToggle.checked = cloudSettings.enabled;
-      openConsentDialog();
-    } else {
-      clearTimeout(cloudSyncTimer);
-      cloudSettings.enabled = false;
-      persistCloudSettings();
-      refreshCloudUi();
-      showToast("云端同步已停用；本机档案不受影响。 ");
+    const action = event.target.closest("[data-drawer-action]")?.dataset.drawerAction;
+    if (action === "instructions") {
+      closeDrawer();
+      methodDialog.showModal();
+    }
+    if (action === "feedback") {
+      closeDrawer();
+      feedbackDialog.showModal();
+      document.getElementById("feedbackContent").focus();
+    }
+  });
+  document.getElementById("drawerLogoutBtn").addEventListener("click", async () => {
+    isLoggingOut = true;
+    try {
+      await fetch(`${API_ORIGIN}/api/team/logout`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" });
+    } finally {
+      redirectToTeam("login");
+    }
+  });
+  document.querySelectorAll(".close-dialog").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
+  document.querySelectorAll(".close-feedback-dialog").forEach((button) => button.addEventListener("click", () => feedbackDialog.close()));
+  document.getElementById("privacyManageBtn").addEventListener("click", openConsentDialog);
+
+  document.getElementById("feedbackForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errorBox = document.getElementById("feedbackError");
+    const submit = event.submitter;
+    errorBox.textContent = "";
+    submit.disabled = true;
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/team/feedback`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: document.getElementById("feedbackCategory").value,
+          content: document.getElementById("feedbackContent").value,
+          pagePath: location.pathname
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "反馈提交失败");
+      event.target.reset();
+      feedbackDialog.close();
+      showToast("反馈已提交，管理员可以在团队后台查看。 ");
+    } catch (error) {
+      errorBox.textContent = error.message;
+    } finally {
+      submit.disabled = false;
     }
   });
 
-  document.getElementById("consentAuthority").addEventListener("change", (event) => {
-    document.getElementById("confirmCloudBtn").disabled = !event.target.checked;
-  });
   document.getElementById("confirmCloudBtn").addEventListener("click", () => {
-    cloudSettings = { enabled: true, deidentified: true, consentAt: new Date().toISOString(), lastSyncedAt: cloudSettings.lastSyncedAt || "" };
-    persistCloudSettings();
     consentDialog.close();
-    refreshCloudUi();
-    const data = collectData();
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
-    const saved = saveRecordLocally(data);
-    queueCloudSync(saved || data, analyze(saved || data), { immediate: true });
-    showToast("团队去标识化自动同步已启用。 ");
   });
 
   methodDialog.addEventListener("click", (event) => {
@@ -1460,6 +1705,9 @@ function attachEvents() {
   shareReportDialog.addEventListener("click", (event) => {
     if (event.target === shareReportDialog) shareReportDialog.close();
   });
+  feedbackDialog.addEventListener("click", (event) => {
+    if (event.target === feedbackDialog) feedbackDialog.close();
+  });
 
   const deleteButton = document.getElementById("deleteRecordBtn");
   if (deleteButton) deleteButton.addEventListener("click", deleteCurrentRecord);
@@ -1467,19 +1715,24 @@ function attachEvents() {
   window.addEventListener("pagehide", () => {
     clearTimeout(draftTimer);
     const data = collectData();
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    localStorage.setItem(scopedStorageKey(DRAFT_KEY), JSON.stringify(data));
     const saved = saveRecordLocally(data, { render: false });
-    if (saved && cloudSettings.enabled) {
+    if (saved && cloudSettings.enabled && !isLoggingOut) {
       clearTimeout(cloudSyncTimer);
       syncRecord(saved, analyze(saved), { silent: true, keepalive: true });
     }
   });
 }
 
-function init() {
+async function init() {
+  configureFixedHeader();
+  const authenticated = await loadTeamSession();
+  if (!authenticated) return;
+  records = loadRecords();
   renderDomains();
   configureRuntimeUi();
-  configureFixedHeader();
+  configureModulePage();
+  configureAccountNavigation();
   attachEvents();
   refreshCloudUi();
   const transferredRecord = takeTeamRecordTransfer();
@@ -1488,7 +1741,7 @@ function init() {
   applyData(transferredRecord || draft || { assessmentDate: today(), domains: {} });
   if (transferredRecord) showToast(`已从团队空间载入 ${transferredRecord.studentCode} 的去标识化档案。`);
   if (records.some((record) => record.migratedFrom === "v1")) showToast("旧版评估档案已自动迁移到新版结构。 ");
-  loadTeamSession();
+  document.body.classList.remove("auth-pending");
   sendAnalytics("visit");
   setInterval(() => sendAnalytics("heartbeat"), 45_000);
 }
