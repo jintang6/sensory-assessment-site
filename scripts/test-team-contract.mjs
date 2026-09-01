@@ -127,7 +127,8 @@ assert(api.includes('"intervention.delete"'), "intervention deletions must be au
 
 assert(!index.includes('value="full"'), "the full-record sync option must not return to the assessment UI");
 assert(index.includes('id="appDrawer"') && index.includes('id="feedbackDialog"'), "account navigation drawer or feedback dialog is missing");
-assert(index.includes('id="headerAdminLink"') && index.includes('id="drawerAdminLink"'), "super-administrator data-backend entries are missing");
+assert(index.includes('id="drawerAdminLink"'), "super-administrator drawer data-backend entry is missing");
+assert(!index.includes('id="headerAdminLink"'), "homepage toolbar must not expose a separate data-backend button");
 assert(app.includes("user.isSuperAdmin === true"), "assessment-page data-backend entry must be gated by super-administrator capability");
 assert(app.includes('/api/team/assessments'), "assessment sync must target the authenticated team endpoint");
 assert(app.includes("module: activeModulePage"), "assessment sync must identify the current professional module");

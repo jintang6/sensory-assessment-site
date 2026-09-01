@@ -1509,7 +1509,6 @@ function configureAccountNavigation() {
   document.getElementById("drawerAssignment").textContent = user.assignmentNote || "可查看本部门学生档案与专业评估记录。";
   const canOpenDataAdmin = user.isSuperAdmin === true;
   document.getElementById("drawerAdminLink").hidden = !canOpenDataAdmin;
-  document.getElementById("headerAdminLink").hidden = !canOpenDataAdmin;
   const allowedModules = user.role === "admin" ? professionalModules.map((module) => module.id) : user.moduleAccess || [];
   document.querySelectorAll("[data-module-link]").forEach((link) => {
     link.hidden = !allowedModules.includes(link.dataset.moduleLink);
