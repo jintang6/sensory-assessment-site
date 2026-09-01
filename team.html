@@ -79,7 +79,7 @@
         <p>仅限本部门受邀教师、治疗师和授权查看人员。</p>
         <form id="loginForm">
           <label class="team-field"><span>工作邮箱</span><input id="loginEmail" type="email" autocomplete="username" required placeholder="name@example.com"></label>
-          <label class="team-field"><span>密码</span><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="至少12个字符"></label>
+          <label class="team-field"><span>密码</span><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="至少8个字符"></label>
           <button class="button primary auth-submit" type="submit">安全登录</button>
         </form>
         <div class="form-error" id="loginError" role="alert"></div>
@@ -94,8 +94,8 @@
           <label class="team-field"><span>邀请码</span><div class="invite-code-entry"><input id="registerInviteCode" autocomplete="off" autocapitalize="characters" maxlength="18" required placeholder="KFB-XXXX-XXXX-XXXX"><button class="button quiet" id="verifyInviteCodeBtn" type="button">验证</button></div></label>
           <label class="team-field"><span>工作邮箱</span><input id="registerEmail" type="email" autocomplete="username" required placeholder="name@example.com"></label>
           <label class="team-field"><span>姓名或工作称呼</span><input id="registerName" autocomplete="name" maxlength="40" required placeholder="如：王老师"></label>
-          <label class="team-field"><span>设置密码</span><input id="registerPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="至少12个字符"></label>
-          <label class="team-field"><span>确认密码</span><input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="再次输入密码"></label>
+          <label class="team-field"><span>设置密码</span><input id="registerPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="至少8个字符"></label>
+          <label class="team-field"><span>确认密码</span><input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="再次输入密码"></label>
           <label class="registration-confirm"><input id="registerPrivacyConfirm" type="checkbox" required><span>我只会在授权名单中使用学生姓名和班级，不把学籍号、联系方式、家庭住址等信息写入评估字段或观察记录。</span></label>
           <button class="button primary auth-submit" type="submit">使用邀请码注册</button>
         </form>
@@ -109,8 +109,8 @@
         <p id="forcedPasswordIdentity">管理员为你创建了临时账号。完成改密前不能进入评估与学生档案。</p>
         <form id="forcedPasswordForm">
           <label class="team-field"><span>当前临时密码</span><input id="forcedCurrentPassword" type="password" autocomplete="current-password" required></label>
-          <label class="team-field"><span>设置新密码</span><input id="forcedNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="至少12个字符"></label>
-          <label class="team-field"><span>确认新密码</span><input id="forcedNewPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+          <label class="team-field"><span>设置新密码</span><input id="forcedNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="至少8个字符"></label>
+          <label class="team-field"><span>确认新密码</span><input id="forcedNewPasswordConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
           <p class="form-note">建议使用与其他网站不同的长密码；修改后，临时密码立即失效。</p>
           <div class="form-error" id="forcedPasswordError" role="alert"></div>
           <button class="button primary auth-submit" type="submit">更新密码并进入</button>
@@ -456,8 +456,8 @@
     </div>
     <form class="modal-body password-form" id="passwordForm">
       <label class="team-field"><span>当前密码</span><input id="currentPassword" type="password" autocomplete="current-password" required></label>
-      <label class="team-field"><span>新密码</span><input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
-      <label class="team-field"><span>确认新密码</span><input id="newPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+      <label class="team-field"><span>新密码</span><input id="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+      <label class="team-field"><span>确认新密码</span><input id="newPasswordConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
       <div class="form-error" id="passwordError" role="alert"></div>
       <div class="modal-actions"><button class="button quiet close-account-dialog" type="button">取消</button><button class="button primary" type="submit">更新密码</button></div>
     </form>

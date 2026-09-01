@@ -31,7 +31,7 @@ export function getAuth(request, env) {
     emailAndPassword: {
       enabled: true,
       disableSignUp: false,
-      minPasswordLength: 12,
+      minPasswordLength: 8,
       maxPasswordLength: 128,
       autoSignIn: false
     },

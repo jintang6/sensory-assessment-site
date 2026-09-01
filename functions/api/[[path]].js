@@ -834,7 +834,7 @@ async function handleTeamRegister(request, env) {
   const password = typeof body.password === "string" ? body.password : "";
   if (!email) return json(request, env, { error: "请输入有效的工作邮箱" }, 400);
   if (displayName.length < 2) return json(request, env, { error: "姓名或工作称呼至少填写2个字符" }, 400);
-  if (password.length < 12 || password.length > 128) return json(request, env, { error: "密码需为12至128个字符" }, 400);
+  if (password.length < 8 || password.length > 128) return json(request, env, { error: "密码需为8至128个字符" }, 400);
 
   const existingMember = await env.DB.prepare("SELECT user_id FROM team_members WHERE email = ?").bind(email).first();
   if (existingMember) return json(request, env, { error: "该邮箱已加入部门，请直接登录" }, 409);
@@ -1094,8 +1094,8 @@ async function handleChangePassword(request, env) {
   const body = await parseBody(request, 10_000);
   const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
   const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
-  if (!currentPassword || newPassword.length < 12 || newPassword.length > 128) {
-    return json(request, env, { error: "新密码需为12至128个字符" }, 400);
+  if (!currentPassword || newPassword.length < 8 || newPassword.length > 128) {
+    return json(request, env, { error: "新密码需为8至128个字符" }, 400);
   }
   const response = await authPost(identity.auth, request, "/api/auth/change-password", {
     currentPassword,

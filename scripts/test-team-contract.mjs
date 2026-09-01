@@ -67,7 +67,8 @@ assert(feedbackMigration.includes("CREATE TABLE IF NOT EXISTS team_feedback"), "
 assert(feedbackMigration.includes("region_name") && feedbackMigration.includes("city_name"), "coarse traffic region fields are missing");
 
 assert(auth.includes("disableIpTracking: true"), "authentication IP tracking must stay disabled");
-assert(auth.includes("minPasswordLength: 12"), "minimum team password length must stay at 12");
+assert(auth.includes("minPasswordLength: 8"), "minimum team password length must stay at 8");
+assert(api.includes("password.length < 8") && api.includes("newPassword.length < 8"), "registration and password changes must enforce the 8-character minimum");
 assert(auth.includes("autoSignIn: false"), "public sign-up must not auto-create a session");
 
 assert(api.includes("匿名云同步已停用，请登录团队工作台使用邀请制协作"), "legacy anonymous cloud writes must stay disabled");
@@ -139,6 +140,7 @@ assert(app.includes('credentials: "include"'), "team requests must send the secu
 assert(index.includes('data-module-link="ot"') && index.includes('data-module-link="st"') && index.includes('data-module-link="pt"'), "four professional assessment entry links are missing");
 assert(app.includes("activeModulePage") && app.includes("professionalAssessors"), "professional page routing or assessor attribution is missing");
 assert(team.includes('id="registerPrivacyConfirm"'), "invite registration privacy confirmation is missing");
+assert((team.match(/minlength="8"/g) || []).length >= 6, "team password fields must expose the 8-character minimum");
 assert(team.includes('id="forcedPasswordPanel"'), "first-login password change UI is missing");
 assert(team.includes('id="passwordResetDialog"'), "administrator password reset result UI is missing");
 assert(team.includes('id="teamDrawer"') && team.includes('id="teamMenuBtn"'), "team workbench brand drawer is missing");
