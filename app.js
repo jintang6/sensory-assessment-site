@@ -11,7 +11,7 @@ const TEAM_RECORD_TRANSFER_KEY = "sensoryTeamOpenRecord.v1";
 const AUTO_SAVE_DELAY = 650;
 const AUTO_SYNC_IDLE_DELAY = 4_000;
 const MIN_CLOUD_SYNC_INTERVAL = 30_000;
-const ASSESSMENT_CATALOG_VERSION = 6;
+const ASSESSMENT_CATALOG_VERSION = 7;
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const IS_WECHAT = /MicroMessenger/i.test(navigator.userAgent);
 const API_ORIGIN = location.hostname === "sensory-assessment-site.pages.dev" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
@@ -424,6 +424,11 @@ function renderDomains() {
           </div>
         </div>
         <div class="impact-description" data-impact-description="${domain.id}"></div>
+        <div class="domain-reference">
+          <div><strong>评估方法</strong><span>${escapeHtml(domain.assessmentMethod)}</span></div>
+          <div><strong>参考依据</strong><span>${escapeHtml(domain.references.map((reference) => reference.title).join("、"))}</span></div>
+          <p>${escapeHtml(domain.scoringNote)}</p>
+        </div>
         <p class="domain-validity-note">本领域共${domain.items.length}项，至少完成${domain.minimumItems}项才形成领域分；未观察项目保留“未评”。</p>
         <div class="item-table">
           ${domain.items.map((item) => `
@@ -651,6 +656,7 @@ function refreshAnalysis() {
   const activeStrengthRows = (activeSummary?.strengthDomainIds || []).map((id) => activeRows.find((row) => row.id === id)).filter(Boolean);
   const activeCoverage = activeReadiness?.coverage || 0;
   const activeAverage = activeSummary?.average ?? null;
+  const activeFinding = result.professionalFindings?.find((item) => item.id === activeModulePage);
 
   document.getElementById("coverageText").textContent = `${activeCoverage}%`;
   document.getElementById("coverageBar").style.width = `${activeCoverage}%`;
@@ -658,8 +664,8 @@ function refreshAnalysis() {
   document.getElementById("overallLevel").textContent = activeSummary?.level || "尚未形成结果";
   const moduleLabel = moduleById(activeModulePage).label;
   const moduleSummaryText = activeAverage === null
-    ? `${moduleLabel}已形成${activeSummary?.validDomainCount || 0}/${activeSummary?.totalDomainCount || 0}个有效领域；至少完成3个有效领域后生成本专业初步分析，达到${activeReadiness?.requiredDomainCount || 4}个后才参与个训分流。`
-    : `${moduleLabel}均分${activeAverage.toFixed(1)}，已形成${activeSummary.validDomainCount}/${activeSummary.totalDomainCount}个有效领域。相对优势：${activeStrengthRows.map((row) => row.title).join("、") || "待补充"}；优先关注：${activePriorityRows.map((row) => row.title).join("、") || "待复核"}。`;
+    ? `${moduleLabel}已形成${activeSummary?.validDomainCount || 0}/${activeSummary?.totalDomainCount || 0}个有效领域；至少完成3个有效领域后生成本专业初步分析，达到${activeReadiness?.requiredDomainCount || 5}个后才参与个训分流。`
+    : activeFinding?.summary || `${moduleLabel}均分${activeAverage.toFixed(1)}，已形成${activeSummary.validDomainCount}/${activeSummary.totalDomainCount}个有效领域。相对优势：${activeStrengthRows.map((row) => row.title).join("、") || "待补充"}；优先关注：${activePriorityRows.map((row) => row.title).join("、") || "待复核"}。`;
   document.getElementById("overallSummary").textContent = moduleSummaryText;
   document.getElementById("scoreRing").style.setProperty("--score-angle", `${activeAverage === null ? 0 : (activeAverage / 5) * 360}deg`);
   const state = document.getElementById("analysisState");
@@ -1013,6 +1019,7 @@ function buildReportHtml(record) {
     return `
       <section class="domain-report">
         <h3>${escapeHtml(row.title)} <small>${escapeHtml(moduleById(row.professional).short)}</small><span>${row.average === null ? "未形成领域分" : `${row.average.toFixed(1)}分 · ${impactLabels[row.impact]}`}</span></h3>
+        <p class="domain-method"><b>评估方法：</b>${escapeHtml(row.assessmentMethod)}<br><b>参考依据：</b>${escapeHtml(row.references.map((reference) => reference.title).join("、"))}<br><b>计分说明：</b>${escapeHtml(row.scoringNote)}</p>
         <table><thead><tr><th>可观察表现</th><th>评分</th></tr></thead><tbody>${itemRows}</tbody></table>
         ${row.note ? `<p><b>观察记录：</b>${escapeHtml(row.note)}</p>` : ""}
       </section>
@@ -1028,6 +1035,10 @@ function buildReportHtml(record) {
     const contributors = Array.from(new Set([...(assessor.contributors || []), assessor.evaluator].filter(Boolean)));
     return `<tr><td>${escapeHtml(`${module.label} ${module.short}`)}</td><td>${escapeHtml(assessor.evaluator || "未填写")}</td><td>${escapeHtml(contributors.join("、") || "未填写")}</td><td>${escapeHtml(assessor.assessmentDate || "未填写")}</td><td>${readiness.validDomainCount || 0}/${readiness.totalDomainCount || 0}个有效领域</td></tr>`;
   }).join("");
+  const professionalFindingRows = (result.professionalFindings || []).map((finding) => `
+    <section class="professional-finding"><h3>${escapeHtml(finding.label)} <span>${escapeHtml(finding.status)}</span></h3><p>${escapeHtml(finding.summary)}</p></section>
+  `).join("");
+  const referenceLines = (result.referenceSummaries || []).map((reference) => `${reference.title}：${reference.application}${reference.scoring}`);
   const titleName = record.studentName || record.studentCode || "学生";
   const organizationName = record.organizationName || "知衡学生功能评估与康复支持";
   const htmlReportNumber = `ZH-FR-${String(record.assessmentDate || today()).replaceAll("-", "")}-${String(record.studentCode || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "REPORT"}`;
@@ -1039,7 +1050,7 @@ function buildReportHtml(record) {
     h2{margin:24px 0 9px;font-size:19px;border-bottom:1px solid #dfe5e8;padding-bottom:6px}h3{margin:16px 0 7px;font-size:16px}h3 small{margin-left:6px;color:#356b8c}h3 span{float:right;color:#53616c;font-size:13px;font-weight:500}
     .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;margin:18px 0;padding:13px;border:1px solid #dfe5e8;background:#f8fafb}.meta b{color:#65737d}
     .score{font-size:28px;color:#167b72;font-weight:800}.notice{padding:9px 11px;border-left:4px solid #356b8c;background:#e8f0f6;color:#405f73}
-    table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:8px;border:1px solid #dfe5e8;text-align:left;vertical-align:top}th{background:#f3f5f7}.domain-report{break-inside:avoid}
+    table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:8px;border:1px solid #dfe5e8;text-align:left;vertical-align:top}th{background:#f3f5f7}.domain-report,.professional-finding{break-inside:avoid}.domain-method{padding:8px 10px;background:#f5f8f9;color:#53616c;font-size:12.5px}.professional-finding{padding:1px 11px 6px;border-left:4px solid #167b72;background:#f7faf9;margin:9px 0}
     ol{margin:8px 0;padding-left:25px}li{margin:6px 0;padding-left:3px}li::marker{color:#167b72;font-weight:800}.signatures{display:grid;grid-template-columns:repeat(3,1fr);margin-top:22px;border:1px solid #dfe5e8}.signatures div{min-height:80px;padding:12px;border-right:1px solid #dfe5e8}.signatures div:last-child{border-right:0}.foot{margin-top:25px;color:#77838d;font-size:12px}
     @media print{body{padding:0}.domain-report{break-inside:avoid}}
   </style></head><body>
@@ -1052,7 +1063,9 @@ function buildReportHtml(record) {
     <div><b>功能观察均分：</b><span class="score">${result.average === null ? "—" : result.average.toFixed(1)}</span></div><div><b>总体等级：</b>${escapeHtml(result.level)}</div><div><b>分析可信度：</b>${escapeHtml(result.confidence)}</div>
   </div>
   <h2>多专业评估分工与完成情况</h2><table><thead><tr><th>专业模块</th><th>最近提交者</th><th>参与评估人员</th><th>日期</th><th>完成情况</th></tr></thead><tbody>${assessorRows}</tbody></table>
+  <h2>评估依据与评分转换</h2>${list(referenceLines)}
   <h2>评估摘要</h2><p>${escapeHtml(result.summary)}</p>
+  <h2>分专业结论</h2>${professionalFindingRows}
   <h2>个别化分析依据</h2>${list(result.basis)}
   <h2>背景、安全与解释</h2><p><b>主要关切：</b>${escapeHtml(record.background || "未填写")}</p><p><b>医疗与安全：</b>${escapeHtml(record.medicalPrecautions || "未填写")}</p>${list(result.alerts)}
   <h2>相对优势</h2>${list(result.strengths)}<h2>优先支持需要</h2>${list(result.needs)}<h2>个训课分流建议</h2>${list(courseLines)}${list(result.courseRecommendationNotes)}<h2>8周阶段目标</h2>${list(result.goals)}<h2>训练、课堂与生活支持</h2>${list(result.strategies)}

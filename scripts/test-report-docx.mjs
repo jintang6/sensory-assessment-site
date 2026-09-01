@@ -30,7 +30,13 @@ domainDefinitions.forEach(([title, professional], index) => {
     professional,
     score: Number((2.2 + (index % 5) * 0.55).toFixed(1)),
     answered: 5,
-    impact: index % 4
+    impact: index % 4,
+    assessmentMethod: "结构化任务与自然情境观察",
+    referenceTitles: ["学校自然情境功能性观察框架"],
+    evidenceItems: [
+      { label: `${title}重点项目A`, score: 2 + (index % 3) },
+      { label: `${title}重点项目B`, score: 3 + (index % 2) }
+    ]
   };
   domains[id] = {
     support: ["全程协助", "大量协助", "部分提示", "少量提示"][index % 4],
@@ -71,6 +77,24 @@ const row = {
     coverage: 100,
     level: "发展中",
     confidence: "较高",
+    referenceSummaries: [
+      {
+        title: "《感统评估表-实操》",
+        application: "参考感觉调节、姿势控制和动作计划结构。",
+        scoring: "本站统一分数不替代原表正式计分。"
+      },
+      {
+        title: "《语言发育迟缓检查表》S-S法结构",
+        application: "参考语言阶段、基础过程和交流态度。",
+        scoring: "阶段线索须由专业人员按原表复核。"
+      }
+    ],
+    professionalFindings: [
+      { label: "感觉统合 SI", status: "已形成结论", summary: "感觉调节领域在结构化活动中较稳定，课堂声音干扰与活动转换仍需优先支持。" },
+      { label: "作业治疗 OT", status: "已形成结论", summary: "双手操作为相对优势，上肢稳定、任务步骤和生活自理仍需阶段支持。" },
+      { label: "言语语言 ST", status: "已形成结论", summary: "语言理解优于连续表达，建议结合语言阶段项目和自然沟通样本复核。" },
+      { label: "运动功能 / PT", status: "资料不足", summary: "运动模块资料不足，不能据此判断该专业无需要。" }
+    ],
     courseRecommendations: [
       {
         rank: 1,
@@ -97,9 +121,9 @@ const row = {
     ],
     moduleReadiness: {
       si: { label: "感觉统合", ready: true, validDomainCount: 12, totalDomainCount: 12, requiredDomainCount: 5, coverage: 100 },
-      ot: { label: "作业治疗", ready: true, validDomainCount: 13, totalDomainCount: 13, requiredDomainCount: 5, coverage: 100 },
-      st: { label: "言语语言", ready: true, validDomainCount: 11, totalDomainCount: 11, requiredDomainCount: 4, coverage: 100 },
-      pt: { label: "运动功能", ready: true, validDomainCount: 11, totalDomainCount: 11, requiredDomainCount: 4, coverage: 100 }
+      ot: { label: "作业治疗", ready: true, validDomainCount: 14, totalDomainCount: 14, requiredDomainCount: 5, coverage: 100 },
+      st: { label: "言语语言", ready: true, validDomainCount: 14, totalDomainCount: 14, requiredDomainCount: 5, coverage: 100 },
+      pt: { label: "运动功能", ready: true, validDomainCount: 17, totalDomainCount: 17, requiredDomainCount: 5, coverage: 100 }
     },
     summary: "学生在当前支持条件下能够完成部分熟悉活动，在本体觉输入后的姿势控制和双手操作中表现相对稳定；声音干扰、活动转换和新动作计划仍会明显影响课堂参与。",
     basis: [

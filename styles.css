@@ -1575,6 +1575,37 @@ svg {
   color: var(--blue);
 }
 
+.domain-reference {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 16px;
+  margin: 0 0 10px;
+  padding: 9px 10px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #f8faf9;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.domain-reference div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px;
+}
+
+.domain-reference strong {
+  color: var(--teal-dark);
+  white-space: nowrap;
+}
+
+.domain-reference p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-faint);
+}
+
 .domain-validity-note {
   margin: -2px 0 9px;
   color: var(--ink-faint);
@@ -2885,6 +2916,14 @@ svg {
 
   .impact-description {
     display: grid;
+  }
+
+  .domain-reference {
+    grid-template-columns: 1fr;
+  }
+
+  .domain-reference p {
+    grid-column: auto;
   }
 
   .impact-control select {

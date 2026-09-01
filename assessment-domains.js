@@ -1,10 +1,119 @@
-const makeItems = (rows) => rows.map(([id, label, observe]) => ({ id, label, observe }));
-
-const makeDomain = ({ items, ...domain }) => ({
-  ...domain,
-  minimumItems: Math.max(3, Math.ceil(items.length * 0.6)),
-  items: makeItems(items)
+export const referenceFrameworks = Object.freeze({
+  schoolFunctionalObservation: {
+    id: "schoolFunctionalObservation",
+    title: "学校自然情境功能性观察框架",
+    application: "用于记录学生在课堂、生活、游戏和校园活动中的实际完成、所需支持、参与影响与环境条件。",
+    scoring: "本站统一使用1至5级功能表现评分，分数越高表示在当前条件下越独立、稳定。"
+  },
+  siPractical: {
+    id: "siPractical",
+    title: "《感统评估表-实操》",
+    application: "参考其感觉调节类型、感觉辨别、姿势控制、眼动控制、动作计划、自我调节与参与总结结构。",
+    scoring: "按可观察功能表现整理，不复制原表结论，也不输出原表总分。"
+  },
+  siQuestionnaire: {
+    id: "siQuestionnaire",
+    title: "《感统评估-问卷》",
+    application: "参考近3个月的自我调节、注意学习和听觉、视觉、触觉、嗅味觉、前庭、本体觉频率回顾框架。",
+    scoring: "原问卷的频率等级仅作为访谈线索，不直接换算为本站功能分。"
+  },
+  languageDelay: {
+    id: "languageDelay",
+    title: "《语言发育迟缓检查表》S-S法结构",
+    application: "参考生理学检查、符号与指示内容关系、语言发展阶段、基础性过程、交流态度及理解表达任务。",
+    scoring: "本站只作阶段线索和功能表现整理，正式阶段判定须依原表流程由具备能力的专业人员完成。"
+  },
+  articulation: {
+    id: "articulation",
+    title: "《构音障碍检查表》",
+    application: "参考呼吸、发声、口腔外围结构与运动、构音部位方式、连续言语可懂度、错误类型和可诱导性。",
+    scoring: "本站为学校筛查与记录，不据此单独诊断构音障碍、言语失用或嗓音疾病。"
+  },
+  upperLimbSchool: {
+    id: "upperLimbSchool",
+    title: "《上肢能力发展筛查表（学校自编）》",
+    application: "参考双侧肌张力、关节与主动活动范围、双手协调、抓握捏取、自理和书写功能。",
+    scoring: "原表0至3级项目在本站以统一1至5级支持程度记录，不等同原表102分总分。"
+  },
+  gmfm88: {
+    id: "gmfm88",
+    title: "《粗大运动功能评估表（GMFM-88）》",
+    application: "参考卧位与翻身、坐位、爬与跪、站立、走跑跳五大维度安排结构化动作观察。",
+    scoring: "本站为GMFM-88结构参考模式，未复制88项正式计分，不生成正式GMFM维度百分比或总分。"
+  },
+  schoolGrossMotor: {
+    id: "schoolGrossMotor",
+    title: "《粗大动作评估量表》",
+    application: "参考单脚站、跨越、侧向与后退移动、变向跑、跳跃、下蹲、踢球和躯干伸取等校本任务。",
+    scoring: "原表0至3级协助程度在本站以统一1至5级支持程度记录，用于阶段比较。"
+  }
 });
+
+const upperLimbReferenceDomains = new Set([
+  "otUpperLimbToneRange", "otPosturalUpperLimb", "otFineMotor", "otVisualMotor", "otBilateralPraxis",
+  "otDressing", "otHygieneToileting", "otFeedingTools"
+]);
+const languageReferenceDomains = new Set([
+  "stCommunicationFoundations", "stLanguageDevelopmentStage", "stLanguageFoundationalProcess",
+  "stReceptiveLanguage", "stExpressiveLanguage", "stFunctionalAAC", "stSocialCommunication", "stCognitiveLiteracy"
+]);
+const articulationReferenceDomains = new Set([
+  "stSpeechSound", "stMotorSpeech", "stOralPeripheralMechanism", "stVoiceResonance"
+]);
+const gmfmReferenceDomains = new Set([
+  "ptGmfmLyingRolling", "ptGmfmSitting", "ptGmfmCrawlingKneeling", "ptGmfmStanding",
+  "ptGmfmWalkingRunningJumping", "ptPostureAlignment", "ptRangeStrength", "ptMotorControl", "ptTransfers",
+  "ptMobility", "ptStairsTerrain", "ptBalanceProtection", "ptCoordination"
+]);
+const schoolGrossMotorReferenceDomains = new Set([
+  "ptSchoolGrossMotorSkills", "ptMobility", "ptStairsTerrain", "ptBalanceProtection", "ptCoordination"
+]);
+
+function referenceIdsFor(domain) {
+  const ids = ["schoolFunctionalObservation"];
+  if (domain.professional === "si") ids.push("siPractical", "siQuestionnaire");
+  if (upperLimbReferenceDomains.has(domain.id)) ids.push("upperLimbSchool");
+  if (languageReferenceDomains.has(domain.id)) ids.push("languageDelay");
+  if (articulationReferenceDomains.has(domain.id)) ids.push("articulation");
+  if (gmfmReferenceDomains.has(domain.id)) ids.push("gmfm88");
+  if (schoolGrossMotorReferenceDomains.has(domain.id)) ids.push("schoolGrossMotor");
+  return [...new Set(ids)];
+}
+
+function assessmentMethodFor(domain) {
+  if (domain.professional === "si") return "教师/照护者回顾 + 自然情境观察 + 结构化感觉运动任务";
+  if (domain.professional === "ot") return upperLimbReferenceDomains.has(domain.id)
+    ? "真实作业任务 + 结构化上肢操作 + 左右侧比较"
+    : "真实课堂与生活任务 + 活动分析 + 环境支持比较";
+  if (articulationReferenceDomains.has(domain.id)) return "口腔外围机制观察 + 音节/词语/连续言语样本";
+  if (domain.professional === "st") return "实物/图片/动作任务 + 自然沟通样本 + 教师或家庭访谈";
+  if (domain.professional === "pt") return "结构化动作任务 + 校园移动观察 + 必要的近身保护";
+  return "多情境功能性观察";
+}
+
+function scoringNoteFor(domain) {
+  if (domain.id.startsWith("ptGmfm")) return "GMFM原表采用0至3级；本站1至5级仅反映任务支持程度，不能换算正式GMFM分数。";
+  if (domain.id === "ptSchoolGrossMotorSkills") return "校本原表采用0至3级；本站1至5级用于统一跨专业报告和复评比较。";
+  if (domain.id === "stLanguageDevelopmentStage") return "按最高稳定完成的阶段项目提供发展线索，不自动作S-S法正式阶段诊断。";
+  if (upperLimbReferenceDomains.has(domain.id)) return "记录左右侧、动作质量、疼痛及代偿；本站分数不等同校本上肢筛查原始总分。";
+  if (domain.professional === "si") return "感觉行为频率只作背景；项目分数统一表示功能完成和恢复程度，分数越高越稳定。";
+  return "1至5级按完成比例、提示程度和跨次稳定性综合选择；未观察保留未评。";
+}
+
+const makeItems = (rows) => rows.map(([id, label, observe, metadata = {}]) => ({ id, label, observe, ...metadata }));
+
+const makeDomain = ({ items, ...domain }) => {
+  const referenceIds = domain.referenceIds || referenceIdsFor(domain);
+  return {
+    ...domain,
+    assessmentMethod: domain.assessmentMethod || assessmentMethodFor(domain),
+    scoringNote: domain.scoringNote || scoringNoteFor(domain),
+    referenceIds,
+    references: referenceIds.map((id) => referenceFrameworks[id]).filter(Boolean),
+    minimumItems: Math.max(3, Math.ceil(items.length * 0.6)),
+    items: makeItems(items)
+  };
+};
 
 export const domains = [
   // SI: 12 domains, preserving the original domain ids for existing records.
@@ -229,6 +338,22 @@ export const domains = [
     ]
   }),
   makeDomain({
+    id: "otUpperLimbToneRange", category: "performance", professional: "ot",
+    title: "上肢肌张力、关节与主动活动范围", scope: "左右肩、肘、腕与拇指的肌张力表现、挛缩风险、主动活动范围、疼痛和代偿",
+    strategies: [
+      "先在安静、稳定体位下比较左右侧，再把结果放回伸取、承重、抓握、书写和自理任务中解释。",
+      "出现疼痛、持续关节受限、明显不对称、皮肤问题或功能突然退步时，停止强行活动并转介进一步检查。"
+    ],
+    items: [
+      ["shoulder_tone", "左右肩部肌张力表现允许学生主动伸取、承重或摆位", "分别记录左、右侧偏高、偏低、波动及对功能的影响"],
+      ["elbow_tone", "左右肘部肌张力表现允许屈伸并把手带到任务位置", "比较主动与协助运动，记录联带、阻力和代偿"],
+      ["wrist_tone", "左右腕手肌张力表现允许腕部稳定和手指分化操作", "观察屈曲、伸展、偏斜和持续握拳等表现"],
+      ["joint_integrity", "肩、肘、腕和手部无明显挛缩、疼痛或结构问题限制当前作业", "记录关节活动终末感觉、疼痛表达和已知医学限制，不作强力牵伸"],
+      ["shoulder_elbow_arom", "左右肩肘主动活动范围足以完成伸取、送手到口和穿脱等任务", "分别比较达到完整范围、超过80%、50至80%或不足50%的功能表现"],
+      ["wrist_thumb_arom", "左右腕部与拇指主动活动范围足以完成抓放、捏取和工具操作", "记录腕伸、拇指外展对掌、左右差异及疲劳后的变化"]
+    ]
+  }),
+  makeDomain({
     id: "otPosturalUpperLimb", category: "performance", professional: "ot",
     title: "坐姿、上肢稳定与操作耐力", scope: "功能坐姿、肩肘腕稳定、伸取、承重、双手支撑和操作耐力",
     strategies: ["先调整桌椅、脚踏和材料高度，再通过短时承重与伸取活动建立操作基础。"],
@@ -387,6 +512,38 @@ export const domains = [
     ]
   }),
   makeDomain({
+    id: "stLanguageDevelopmentStage", category: "communication", professional: "st",
+    title: "语言符号发展阶段线索", scope: "从物品功能关系、词汇符号到两词句、三词句、语序与被动关系的理解和表达",
+    strategies: [
+      "从学生当前稳定理解的阶段开始，使用实物、动作和图片建立关系，再扩展到口语或AAC表达。",
+      "阶段判断应同时比较理解与表达，并以多次稳定表现为准，不因单次模仿直接提升阶段。"
+    ],
+    items: [
+      ["stage2_object_relation", "能理解并按功能使用熟悉物品，完成放入、配对或选择等物品关系任务", "对应物品基础概念，控制成人手势与情境猜测", { stageRank: 2, stageLabel: "阶段2：物品关系" }],
+      ["stage3_object_action", "能在实物或图片中理解或表达常见物品、身体部位和动作词", "分别记录成人语、儿童语、手势、图片或AAC方式", { stageRank: 3, stageLabel: "阶段3：事物与动作符号" }],
+      ["stage3_attribute", "能理解或表达大小、颜色等基本属性并与事物正确组合", "比较单独属性词与属性加事物的理解表达", { stageRank: 3.5, stageLabel: "阶段3：属性符号" }],
+      ["stage4_two_word", "能理解或表达人物加动作、动作加对象或属性加事物等两词关系", "使用图片选择和自然表达分别验证，避免只记固定短语", { stageRank: 4.1, stageLabel: "阶段4-1：两词关系" }],
+      ["stage4_three_word", "能理解或表达人物加动作加对象或多属性组合等三词关系", "记录关键信息是否完整以及词序是否稳定", { stageRank: 4.2, stageLabel: "阶段4-2：三词关系" }],
+      ["stage5_grammar", "能理解或表达依赖语序、主动与被动关系的句子信息", "用角色互换图片排除仅凭词汇猜测，分别记录理解和表达", { stageRank: 5, stageLabel: "阶段5：语序与句法规则" }]
+    ]
+  }),
+  makeDomain({
+    id: "stLanguageFoundationalProcess", category: "communication", professional: "st",
+    title: "语言学习基础性过程", scope: "物品关系、延迟反应、图形与积木操作、视动复制、听觉记忆及言语手势模仿",
+    strategies: [
+      "在语言任务前确认学生是否理解物品关系、能维持表征并具备相应模仿和短时记忆基础。",
+      "将任务材料数量和等待时间逐步调整，分别记录理解困难、记忆负荷、动作限制与配合状态。"
+    ],
+    items: [
+      ["object_permanence", "能完成放入、寻找或延迟后取回熟悉物品等物品关系任务", "记录延迟时间、搜索策略和是否依赖即时提示"],
+      ["shape_matching", "能在3个起逐步增加的选择中完成基本形状镶嵌、配对或辨别", "记录选择数量、旋转尝试、错误修正和视觉提示"],
+      ["block_construction", "能观察范例后完成与能力相符的积木搭建或空间组合", "比较直接仿搭、延迟仿搭和口语指令条件"],
+      ["visual_copy", "能描线或复制直线、曲线和基本图形，反映视动整合基础", "记录起点、方向、连续性及是否受运动限制"],
+      ["auditory_memory", "能保持并按顺序回应2至3个与能力相符的声音、词语或动作信息", "由2个单位开始，记录复述、执行和遗漏位置"],
+      ["verbal_gesture_imitation", "能模仿与当前发展水平相符的手势、口部动作、声音或词语", "区分同时模仿、延迟模仿和自发表达"]
+    ]
+  }),
+  makeDomain({
     id: "stReceptiveLanguage", category: "communication", professional: "st",
     title: "语言理解", scope: "词汇、指令、概念、提问、句意和课堂信息理解",
     strategies: ["确认注意后使用短句和关键词，配合实物、动作或图片，并给予足够反应时间再重复。"],
@@ -436,6 +593,22 @@ export const domains = [
       ["prosody", "语速、重音、节律和停顿有助于听者理解", "自然表达而非机械模仿"],
       ["effort_fatigue", "言语时无明显过度用力或快速疲劳导致可懂度下降", "记录时长和恢复"],
       ["stimulability", "在视觉、听觉或触觉提示下能改善部分目标发音", "记录最有效提示，不作为独立诊断"]
+    ]
+  }),
+  makeDomain({
+    id: "stOralPeripheralMechanism", category: "speech", professional: "st",
+    title: "呼吸发声与口腔外围机制", scope: "呼吸、发声、面唇、腭咽、舌、下颌的结构对称、活动范围、力量、协调和言语影响",
+    strategies: [
+      "先观察自然呼吸、发声和进食外观，再进行短时结构化动作；非言语口部动作结果不能直接等同言语能力。",
+      "持续嘶哑、呼吸困难、明显鼻漏气、疼痛、结构异常或吞咽风险应优先转介医学及相应专业评估。"
+    ],
+    items: [
+      ["respiratory_support", "自然呼吸模式、呼吸频率和控制性呼气能够支持当前长度的发声", "观察胸腹协调、快速呼气和最长舒适呼气，不进行危险憋气"],
+      ["phonation_control", "起声、持续发声、响度和音高调节能够支持听者理解", "记录最长舒适发声、气息声、粗糙、紧张、震颤和疲劳"],
+      ["face_lip_function", "面部对称、唇闭合、展唇圆唇及唇部力量协调能够支持发音", "同时记录流涎、口呼吸、鼓腮漏气和双侧差异"],
+      ["velopharyngeal_function", "软腭运动和腭咽闭合表现能够支持吹气、口腔压力及正常共鸣", "观察软腭抬高、鼻漏气、口鼻共鸣和结构外观，异常时转介"],
+      ["tongue_function", "舌的伸出、回缩、左右和上下运动范围与速度能够支持目标音转换", "记录偏斜、抖动、代偿、力量和连续动作协调"],
+      ["jaw_oral_reflex", "下颌开合、稳定、咀嚼相关运动及口腔反射不明显限制当前言语", "观察开口范围、稳定性、咬合、反射和疼痛，不以非言语动作作诊断"]
     ]
   }),
   makeDomain({
@@ -518,6 +691,71 @@ export const domains = [
   }),
 
   // PT: school mobility and participation-focused movement assessment.
+  makeDomain({
+    id: "ptGmfmLyingRolling", category: "movement", professional: "pt", profileGroup: "gmfm88", profileDimension: "A 卧位与翻身",
+    title: "GMFM结构参考 A：卧位与翻身", scope: "仰卧头位与四肢中线活动、侧翻、俯卧抬头、前臂或手掌支撑及卧位转换",
+    strategies: ["在平整安全垫面按学生主动能力观察左右侧，允许充分等待；不把治疗师完成的被动动作计为学生完成。"],
+    items: [
+      ["supine_head_midline", "仰卧时能把头保持或转回中线并主动看向左右目标", "分别观察自主启动、保持和左右差异"],
+      ["supine_midline_limbs", "仰卧时能把双手带到中线、手到口或主动抬动下肢", "记录动作幅度、对称性和是否需要摆位"],
+      ["roll_to_side", "能从仰卧主动转向左、右侧卧并保持身体连续转动", "分别评左、右方向，记录头、肩、骨盆启动顺序"],
+      ["roll_prone_supine", "能在仰卧与俯卧之间主动翻身并完成主要步骤", "比较左右方向、上肢受压和所需协助"],
+      ["prone_head_forearm", "俯卧时能抬头并以前臂支撑观察前方或伸手取物", "记录头控时间、胸部离垫和呼吸状态"],
+      ["prone_extended_arm", "俯卧时能以较伸展的上肢支撑、转移重心或向前移动身体", "观察肘伸、肩带稳定、左右承重和疲劳"]
+    ]
+  }),
+  makeDomain({
+    id: "ptGmfmSitting", category: "movement", professional: "pt", profileGroup: "gmfm88", profileDimension: "B 坐位",
+    title: "GMFM结构参考 B：坐位", scope: "辅助与独立坐位、上肢自由、不同方向伸取、坐位转换和凳面坐位",
+    strategies: ["先提供足够安全支撑，再逐步减少手部或躯干支持；同时记录保持时间、上肢是否可用于活动及失衡后的恢复。"],
+    items: [
+      ["supported_sit_head", "在骨盆或躯干获得支持时能维持头部控制并观察环境", "记录支持位置、头控时间和疲劳"],
+      ["floor_sit_hands_free", "在适合自身的地面坐姿中能短时保持平衡并释放双手活动", "允许长坐、环坐或适配坐姿，记录保持时间"],
+      ["sit_reach_forward", "坐位时能向前伸手取物并回到稳定位置", "物品放在肩高与可达范围，记录保护反应"],
+      ["sit_reach_side", "坐位时能向左、右及身后适度伸取并恢复稳定", "比较双侧、跨中线和躯干旋转"],
+      ["sit_transition_floor", "能在坐位与俯卧、四点跪或侧坐之间主动转换", "记录启动方式、上肢支撑和所需协助"],
+      ["bench_sit_transition", "能在凳面保持坐位并参与从地面到凳面或凳面到地面的转换", "记录脚部支持、手扶和控制性落地"]
+    ]
+  }),
+  makeDomain({
+    id: "ptGmfmCrawlingKneeling", category: "movement", professional: "pt", profileGroup: "gmfm88", profileDimension: "C 爬与跪",
+    title: "GMFM结构参考 C：爬行与跪位", scope: "俯卧到四点跪、四点支撑伸取、腹爬或手膝爬、台阶爬、跪位与半跪位",
+    strategies: ["根据学生能力使用腹爬、手膝爬或适配移动方式，重点记录主动承重、左右交替、距离和安全。"],
+    items: [
+      ["attain_four_point", "能从俯卧或坐位主动进入四点跪或功能相近的承重姿势", "记录头躯干控制、髋膝位置和协助部位"],
+      ["hold_four_point", "能在四点跪中保持上、下肢承重并稳定头躯干", "记录保持时间、关节对齐和疼痛"],
+      ["four_point_reach", "四点跪时能转移重心并抬起一侧手伸取物品", "分别观察左右侧和失衡恢复"],
+      ["crawl_forward", "能以腹爬、手膝爬或适配方式连续向前移动", "记录距离、左右交替、速度和休息"],
+      ["crawl_steps", "在充分保护下能参与向上或向下爬越低台阶", "记录领先侧、转身下阶和成人保护"],
+      ["kneel_half_kneel", "能进入、维持并离开高跪或半跪位参与活动", "比较左右半跪、上肢扶持和躯干稳定"]
+    ]
+  }),
+  makeDomain({
+    id: "ptGmfmStanding", category: "movement", professional: "pt", profileGroup: "gmfm88", profileDimension: "D 站立",
+    title: "GMFM结构参考 D：站立", scope: "扶物起立、扶持与独立站立、单脚负重、坐站转换、下蹲取物和地面起立",
+    strategies: ["按学生常用支撑条件评估，明确记录扶物、扶手、矫形器和成人保护，不以移除必要辅具换取所谓独立。"],
+    items: [
+      ["pull_to_stand", "能通过跪位、半跪或其他安全方式主动参与扶物起立", "记录领先侧、上肢拉拽、下肢承重和协助"],
+      ["supported_stand", "在双手、单手或辅助器具支持下保持站立并调整身体", "记录支撑条件、时间和对齐"],
+      ["independent_stand", "无需手扶时能短时保持站立并安全恢复", "仅在适合学生时评估，近身保护"],
+      ["single_leg_loading", "站立时能短时把重量移向一侧并抬起另一脚", "分别评左右侧，可使用规定支撑并记录时间"],
+      ["sit_to_stand_control", "能从合适高度座位主动站起并控制坐回", "记录手扶、脚位、速度和落座控制"],
+      ["squat_floor_rise", "能下蹲取物、恢复站立或从地面参与起立", "允许家具或成人支持，记录路径和安全"]
+    ]
+  }),
+  makeDomain({
+    id: "ptGmfmWalkingRunningJumping", category: "movement", professional: "pt", profileGroup: "gmfm88", profileDimension: "E 走跑跳",
+    title: "GMFM结构参考 E：走、跑与跳", scope: "扶持与独立步行、后退与变向、跨越、楼梯、快速移动、双脚跳和单脚跳",
+    strategies: ["仅对具备相应承重与医学安全条件的学生进行跑跳任务；可用助行或轮椅功能移动结果补充校园参与解释。"],
+    items: [
+      ["cruise_supported_walk", "能扶家具侧移或在双手、单手支持下向前行走", "记录距离、手部支持、步态连续性和方向"],
+      ["independent_walk", "能在平地独立向前行走并安全停止", "记录距离、速度、偏离路线和跌倒风险"],
+      ["backward_turn_walk", "能后退、转弯或掉头后继续移动并保持安全", "比较左右转向和狭窄空间"],
+      ["step_over_stairs", "能跨越障碍并以当前方式参与上下台阶或楼梯", "记录障碍高度、扶手、交替步和保护"],
+      ["run_stop_return", "能以跑、快走或适配快速移动完成启动、停止和返回", "记录路线、变向、速度控制和耐力"],
+      ["jump_hop", "能参与双脚离地跳、向前跳、上下跳或单脚跳中的适合项目", "按实际能力选择，不适用项目保持未评并确保近身保护"]
+    ]
+  }),
   makeDomain({
     id: "ptPostureAlignment", category: "movement", professional: "pt",
     title: "姿势对齐与体位维持", scope: "头颈、躯干、骨盆、四肢对齐，坐站体位和姿势耐力",
@@ -620,6 +858,22 @@ export const domains = [
       ["jump_alternative", "参与离地、跨越或替代性上下运动", "重视安全与承重限制"],
       ["throw_catch", "在稳定姿势下完成推、投、滚或接物", "调整球体大小、速度和距离"],
       ["kick_target", "完成踢、推或其他方式使物体朝目标移动", "观察支撑、时机和准确性"]
+    ]
+  }),
+  makeDomain({
+    id: "ptSchoolGrossMotorSkills", category: "movement", professional: "pt", profileGroup: "school-gross-motor",
+    title: "校本粗大动作专项任务", scope: "单脚站、跨越、侧向后退移动、变向跑、多种跳跃、下蹲蛙跳、踢球与坐位躯干伸取",
+    strategies: [
+      "只选择与学生身体状况和教学目标相符的任务，先示范并明确路线；不适用的跑跳项目保持未评。",
+      "同一任务记录独立、少量提示、部分协助、大量协助或不能完成，并同步记录动作质量和安全。"
+    ],
+    items: [
+      ["single_leg_stance", "能在充分保护下以左、右脚分别完成与能力相符的单脚站立", "记录支撑条件、左右侧和最长稳定时间"],
+      ["obstacle_side_backward", "能跨过低障碍，并完成侧向走或后退走中的适合任务", "分别记录跨越高度、方向、路线和协助"],
+      ["directional_run", "能完成跑或快走后的停止返回，以及S形路线变向", "记录启动、制动、绕点、碰撞和失衡"],
+      ["jump_series", "能完成双脚跳、单脚跳、原地上下跳或连续向前跳中的适合项目", "逐项记录距离、次数、双脚同步和落地控制"],
+      ["squat_frog_jump", "能完成下蹲起立，并在适用时完成连续蛙跳", "记录蹲深、足跟、膝髋对齐、上肢代偿和疲劳"],
+      ["kick_trunk_reach", "能朝目标踢球，并在坐位完成向后约45度的躯干伸取后返回", "分别记录支撑脚、准确性、坐位平衡和保护反应"]
     ]
   }),
   makeDomain({

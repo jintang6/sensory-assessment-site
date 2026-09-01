@@ -158,6 +158,8 @@ export function buildAssessmentReportDocument(row, api, fontData = null) {
 
   const numberingReferences = [
     "report-basis",
+    "report-references",
+    "report-professional-findings",
     "report-alerts",
     "report-strengths",
     "report-needs",
@@ -284,12 +286,18 @@ export function buildAssessmentReportDocument(row, api, fontData = null) {
   const courseLines = Array.isArray(analysis.courseRecommendations) && analysis.courseRecommendations.length
     ? analysis.courseRecommendations.map((item) => `${valueOr(item.priorityLabel, "建议")}：${valueOr(item.title)}。${valueOr(item.rationale, "")}建议聚焦：${valueOr(item.focus)}。`)
     : [valueOr(analysis.courseRecommendationNotes?.[0], "当前尚未形成个训课分流建议。")];
+  const referenceLines = Array.isArray(analysis.referenceSummaries) && analysis.referenceSummaries.length
+    ? analysis.referenceSummaries.map((reference) => `${valueOr(reference.title)}：${valueOr(reference.application, "用于组织评估任务与证据")} ${valueOr(reference.scoring, "本站分数不替代原表正式计分")}`)
+    : ["本次尚未形成可识别的量表参考记录。"];
+  const professionalFindingLines = Array.isArray(analysis.professionalFindings) && analysis.professionalFindings.length
+    ? analysis.professionalFindings.map((finding) => valueOr(finding.summary, `${valueOr(finding.label)}资料不足。`))
+    : ["尚未形成分专业结论。"];
 
   const domainWidths = [1450, 600, 700, 800, 1000, 1250, 3560];
   const createDomainHeader = () => new TableRow({
     tableHeader: true,
     cantSplit: true,
-    children: ["领域", "专业", "均分", "项目", "参与影响", "当前支持", "观察记录"].map((label, index) => new TableCell({
+    children: ["领域", "专业", "均分", "项目", "参与影响", "当前支持", "项目证据 / 观察记录"].map((label, index) => new TableCell({
       width: { size: domainWidths[index], type: WidthType.DXA },
       margins: cellMargins,
       shading: { fill: COLORS.blueSoft, type: ShadingType.CLEAR },
@@ -305,6 +313,10 @@ export function buildAssessmentReportDocument(row, api, fontData = null) {
   const domainRows = Object.entries(analysis.domainScores || {}).map(([id, domain]) => {
     const detail = record.domains?.[id] || {};
     const score = Number(domain?.score);
+    const evidence = Array.isArray(domain?.evidenceItems)
+      ? domain.evidenceItems.map((item) => `${valueOr(item.label, "项目")}（${Number(item.score) || "—"}级）`).join("；")
+      : "";
+    const noteAndEvidence = [evidence ? `重点项目：${evidence}` : "", detail.note ? `原始记录：${detail.note}` : ""].filter(Boolean).join("\n");
     const values = [
       valueOr(domain?.title, id),
       valueOr(String(domain?.professional || detail.professional || "").toUpperCase(), "—"),
@@ -312,7 +324,7 @@ export function buildAssessmentReportDocument(row, api, fontData = null) {
       `${Number(domain?.answered) || 0}项`,
       impactLabels[Number(domain?.impact) || 0] || impactLabels[0],
       valueOr(detail.support, "未记录"),
-      valueOr(detail.note, "—")
+      valueOr(noteAndEvidence, "—")
     ];
     return new TableRow({
       cantSplit: true,
@@ -408,16 +420,20 @@ export function buildAssessmentReportDocument(row, api, fontData = null) {
       style: "ReportCallout",
       border: { left: { style: BorderStyle.SINGLE, size: 16, color: COLORS.gold } },
       shading: { fill: COLORS.goldSoft, type: ShadingType.CLEAR },
-      children: [run("报告使用说明：本报告由多专业学校场景功能性观察数据自动整理，供团队制定目标与复核服务分流使用；不是标准化常模量表，不能替代医学诊断或各专业完整评估。", { size: 22, color: COLORS.navy })]
+      children: [run("报告使用说明：本报告依据逐项功能观察，并参考校内提供的专业评估表结构自动整理，供团队制定目标与复核服务分流使用；不替代原量表规范施测、正式计分、常模解释、医学诊断或各专业完整评估。", { size: 22, color: COLORS.navy })]
     }),
     metadataTable,
     heading("一、评估目的与方法"),
     bodyParagraph(`评估目的：描述${title}在${valueOr(record.setting, "学校与康复情境")}中的感觉调节、日常活动、沟通和运动功能表现，识别相对优势与优先支持需要，并形成可测量目标及跨专业分流建议。`),
     bodyParagraph(`资料来源：${Array.isArray(record.observationSources) && record.observationSources.length ? record.observationSources.join("、") : "未记录"}。评分反映学生在当前支持条件下完成可观察任务的程度，并结合参与影响、支持等级与具体观察解释。`),
+    bodyParagraph("量表参考与评分转换：", { run: { bold: true, color: COLORS.navy }, keepNext: true }),
+    ...numberedList(referenceLines, "report-references"),
     heading("二、多专业评估分工与完成情况"),
     assessorTable,
     heading("三、评估摘要"),
     bodyParagraph(valueOr(analysis.summary, "尚未形成有效摘要。")),
+    bodyParagraph("分专业结论：", { run: { bold: true, color: COLORS.navy }, keepNext: true }),
+    ...numberedList(professionalFindingLines, "report-professional-findings"),
     heading("四、个别化分析依据"),
     ...numberedList(analysis.basis, "report-basis"),
     heading("五、背景与安全信息"),
@@ -443,7 +459,7 @@ export function buildAssessmentReportDocument(row, api, fontData = null) {
   const domainNotes = [
     new Paragraph({
       style: "ReportNote",
-      children: [run("评分说明：1=全程协助，2=大量协助，3=部分提示，4=少量提示，5=独立稳定。每个领域至少完成60%的项目才形成领域分，结果应结合多情境观察、家庭优先事项和跨专业资料解释。", { size: 20, color: COLORS.faint })]
+      children: [run("评分说明：1=全程协助，2=大量协助，3=部分提示，4=少量提示，5=独立稳定。每个领域至少完成60%的项目才形成领域分。S-S阶段、GMFM-88、感觉问卷及校本0至3级表的原始等级不直接换算为本站分数。", { size: 20, color: COLORS.faint })]
     }),
     new Paragraph({
       style: "ReportNote",

@@ -52,7 +52,7 @@ const result = analyzeAssessment(data, {
   impactLabels: ["无明显影响", "轻度影响", "中度影响", "显著影响"]
 });
 
-assert.equal(result.methodVersion, "multidisciplinary-functional-v6");
+assert.equal(result.methodVersion, "multidisciplinary-functional-v7-scale-informed");
 assert.equal(result.validDomainCount, 3);
 assert.equal(result.coverage, 100);
 assert.equal(result.priorities[0].id, "regulation");
@@ -68,6 +68,9 @@ assert.equal(result.courseRecommendations.length, 2);
 assert.equal(result.courseRecommendations[0].courseId, "si");
 assert.ok(result.courseRecommendations.some((item) => item.courseId === "ot"));
 assert.ok(result.basis.some((item) => item.includes("感统张老师")));
+assert.ok(Array.isArray(result.professionalFindings));
+assert.ok(Array.isArray(result.referenceSummaries));
+assert.equal(result.domainScores.regulation.evidenceItems.length, 3);
 assert.equal(result.moduleSummaries.si.validDomainCount, 1);
 assert.equal(result.moduleSummaries.ot.validDomainCount, 2);
 
@@ -105,14 +108,17 @@ assert.equal(cloudAnalysis.courseRecommendations.length, 2);
 
 assert.deepEqual(domainCounts, {
   si: { domains: 12, items: 72 },
-  ot: { domains: 13, items: 78 },
-  st: { domains: 11, items: 66 },
-  pt: { domains: 11, items: 66 }
+  ot: { domains: 14, items: 84 },
+  st: { domains: 14, items: 84 },
+  pt: { domains: 17, items: 102 }
 });
 assert.equal(new Set(assessmentDomains.map((domain) => domain.id)).size, assessmentDomains.length);
 assessmentDomains.forEach((domain) => {
   assert.equal(domain.items.length, 6, `${domain.id} should contain six observable items`);
   assert.equal(domain.minimumItems, 4, `${domain.id} should require four rated items`);
+  assert.ok(domain.assessmentMethod.length >= 8, `${domain.id} should describe its assessment method`);
+  assert.ok(domain.scoringNote.length >= 12, `${domain.id} should explain score interpretation`);
+  assert.ok(domain.references.length >= 1, `${domain.id} should declare at least one reference framework`);
   assert.equal(new Set(domain.items.map((item) => item.id)).size, domain.items.length, `${domain.id} item ids must be unique`);
   domain.items.forEach((item) => {
     assert.ok(item.label.length >= 12, `${domain.id}.${item.id} needs a specific observable behavior`);
@@ -140,5 +146,39 @@ assert.equal(completeSiResult.moduleReadiness.si.ready, true);
 assert.equal(completeSiResult.moduleReadiness.si.requiredDomainCount, 5);
 assert.equal(completeSiResult.moduleReadiness.si.validDomainCount, 5);
 assert.equal(completeSiResult.coverage, 42);
+
+const languageStageDomain = assessmentDomains.find((domain) => domain.id === "stLanguageDevelopmentStage");
+const languageStageResult = analyzeAssessment({
+  ...data,
+  domains: {
+    stLanguageDevelopmentStage: {
+      professional: "st",
+      items: {
+        stage2_object_relation: 5,
+        stage3_object_action: 5,
+        stage3_attribute: 4,
+        stage4_two_word: 4,
+        stage4_three_word: 3,
+        stage5_grammar: 2
+      },
+      impact: 2,
+      support: "部分提示",
+      note: "在实物、图片和自然表达中交叉观察。"
+    }
+  }
+}, {
+  domains: [languageStageDomain],
+  scoreLevels,
+  impactLabels: ["无明显影响", "轻度影响", "中度影响", "显著影响"]
+});
+assert.match(languageStageResult.professionalFindings.find((item) => item.id === "st").summary, /阶段4-1.*阶段4-2.*不等同S-S法正式阶段判定/);
+assert.ok(languageStageResult.referenceSummaries.some((item) => item.id === "languageDelay"));
+assert.ok(languageStageResult.alerts.some((item) => item.includes("正式阶段")));
+
+const gmfmDomains = assessmentDomains.filter((domain) => domain.profileGroup === "gmfm88");
+assert.equal(gmfmDomains.length, 5);
+assert.ok(gmfmDomains.every((domain) => domain.references.some((reference) => reference.id === "gmfm88")));
+assert.ok(assessmentDomains.find((domain) => domain.id === "otUpperLimbToneRange").references.some((reference) => reference.id === "upperLimbSchool"));
+assert.ok(assessmentDomains.find((domain) => domain.id === "stOralPeripheralMechanism").references.some((reference) => reference.id === "articulation"));
 
 process.stdout.write("assessment engine QA passed\n");

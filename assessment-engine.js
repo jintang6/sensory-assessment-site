@@ -77,7 +77,7 @@ const professionalModuleProfiles = [
     label: "言语语言 ST",
     courseTitle: "言语语言个训（ST）",
     focus: "语言理解与表达、功能沟通、社会沟通与辅助沟通",
-    minimumDomains: 4,
+    minimumDomains: 5,
     domainWeights: {
       receptiveExpressive: 1,
       functionalCommunication: 1,
@@ -92,7 +92,7 @@ const professionalModuleProfiles = [
     label: "运动功能 / PT",
     courseTitle: "运动功能个训（PT）",
     focus: "姿势、粗大运动、平衡、校园移动与活动耐力",
-    minimumDomains: 4,
+    minimumDomains: 5,
     domainWeights: {
       postural: 1,
       grossMotorMobility: 1,
@@ -151,6 +151,86 @@ function targetItemFor(row) {
 function professionalAssessor(data, moduleId) {
   const value = data.professionalAssessors?.[moduleId];
   return value && typeof value === "object" ? value : {};
+}
+
+function uniqueReferences(rows) {
+  const references = new Map();
+  rows.filter((row) => row.answered > 0).forEach((row) => {
+    list(row.references).forEach((reference) => {
+      if (reference?.id && !references.has(reference.id)) references.set(reference.id, reference);
+    });
+  });
+  return [...references.values()];
+}
+
+function languageStageInterpretation(rows) {
+  const row = rows.find((item) => item.id === "stLanguageDevelopmentStage" && item.valid);
+  if (!row) return "";
+  const ratedStages = row.itemScores
+    .filter((item) => item.score !== null && item.stageRank)
+    .sort((left, right) => Number(left.stageRank) - Number(right.stageRank));
+  const stable = ratedStages.filter((item) => item.score >= 4).at(-1);
+  const emerging = ratedStages.filter((item) => item.score === 3).at(-1);
+  if (!stable && !emerging) return "语言阶段线索：已评项目仍需较多支持，暂不推定稳定阶段。";
+  const stableText = stable ? `较稳定表现最高见于${stable.stageLabel}` : "尚未见达到4级的稳定阶段项目";
+  const emergingText = emerging ? `，${emerging.stageLabel}表现正在发展` : "";
+  return `语言阶段线索：${stableText}${emergingText}；这是本站功能映射，不等同S-S法正式阶段判定。`;
+}
+
+function gmfmReferenceInterpretation(rows) {
+  const dimensionRows = rows.filter((row) => row.profileGroup === "gmfm88" && row.valid);
+  if (!dimensionRows.length) return "";
+  const values = dimensionRows.map((row) => `${row.profileDimension}${row.average.toFixed(1)}级`);
+  return `GMFM结构参考：${values.join("、")}；这些是本站1至5级支持程度，不能换算正式GMFM维度百分比或总分。`;
+}
+
+function buildProfessionalFindings(rows) {
+  return professionalModuleProfiles.map((profile) => {
+    const moduleRows = rows.filter((row) => row.professional === profile.id);
+    const validRows = moduleRows.filter((row) => row.valid);
+    const references = uniqueReferences(moduleRows);
+    if (!validRows.length) {
+      return {
+        id: profile.id,
+        label: profile.label,
+        status: "资料不足",
+        summary: `${profile.label}尚无达到最低项目量的有效领域，不能据此判断该专业无需要。`,
+        evidence: [],
+        referenceTitles: references.map((item) => item.title)
+      };
+    }
+
+    const strongest = validRows.slice().sort((left, right) => right.average - left.average)[0];
+    const priority = validRows.slice().sort((left, right) => right.priority - left.priority)[0];
+    const strongestItems = bestItemsFor(strongest).map((item) => `${item.label}（${item.score}级）`);
+    const priorityItems = priority.itemScores
+      .filter((item) => item.score !== null)
+      .sort((left, right) => left.score - right.score)
+      .slice(0, 2)
+      .map((item) => `${item.label}（${item.score}级）`);
+    const average = validRows.reduce((sum, row) => sum + row.average, 0) / validRows.length;
+    const specialInterpretation = profile.id === "st"
+      ? languageStageInterpretation(rows)
+      : profile.id === "pt"
+        ? gmfmReferenceInterpretation(rows)
+        : "";
+    return {
+      id: profile.id,
+      label: profile.label,
+      status: "已形成结论",
+      average: Number(average.toFixed(2)),
+      validDomainCount: validRows.length,
+      totalDomainCount: moduleRows.length,
+      strengthDomainId: strongest.id,
+      priorityDomainId: priority.id,
+      summary: `${profile.label}完成${validRows.length}/${moduleRows.length}个有效领域，功能观察均分${average.toFixed(1)}级。相对稳定为${strongest.title}：${strongestItems.join("；") || "已评项目"}。优先支持为${priority.title}：${priorityItems.join("；") || "已评低分项目"}。${specialInterpretation}`,
+      evidence: [
+        `相对稳定证据：${strongestItems.join("；") || "暂无"}。`,
+        `优先支持证据：${priorityItems.join("；") || "暂无"}。`
+      ],
+      referenceTitles: references.map((item) => item.title)
+    };
+  });
 }
 
 function buildCourseDecision(data, domains, rows, impactLabels) {
@@ -278,6 +358,8 @@ export function compactAssessmentAnalysis(result) {
     courseRecommendationNotes: result.courseRecommendationNotes,
     moduleReadiness: result.moduleReadiness,
     moduleSummaries: result.moduleSummaries,
+    professionalFindings: result.professionalFindings,
+    referenceSummaries: result.referenceSummaries,
     domainScores: result.domainScores
   };
 }
@@ -328,6 +410,8 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   const mobilitySupport = mobilitySupports[data.mobility] || mobilitySupports["独立移动"];
   const confidence = confidenceFor(data, coverage, validRows.length, observationSources.length);
   const courseDecision = buildCourseDecision(data, domains, rows, impactLabels);
+  const referenceSummaries = uniqueReferences(rows);
+  const professionalFindings = buildProfessionalFindings(rows);
 
   const levelForAverage = (value) => {
     if (value === null) return "资料不足";
@@ -366,7 +450,7 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
 
   const strengthTitles = relativeStrengths.map((row) => row.title).join("、") || "尚未形成稳定领域";
   const focusTitles = focusRows.map((row) => row.title).join("、") || "暂未发现显著优先领域";
-  let summary = `当前有${validRows.length}个有效领域。至少完成3个领域，且每个领域不少于3项，才能生成综合分析。`;
+  let summary = `当前有${validRows.length}个有效领域。至少完成3个领域，且每个领域达到页面标注的最低项目量，才能生成综合分析。`;
   if (average !== null) {
     summary = `综合表现：${level}。本次完成${validRows.length}个有效领域、${answeredItems}项观察。相对优势：${strengthTitles}。优先支持：${focusTitles}。结果可信度：${confidence}，请结合课堂、家庭等自然情境和团队复核后使用。`;
     if (courseDecision.recommendations.length) {
@@ -382,6 +466,9 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     "支持优先级：综合参考领域均分、参与影响、当前支持等级和最低项目表现。",
     `目标设定：以当前能力为起点，8周内先提高1级，并适配${data.communicationMode || "当前沟通方式"}和${data.mobility || "当前移动能力"}。`
   ];
+  if (referenceSummaries.length) {
+    basis.push(`评估参考：${referenceSummaries.map((reference) => reference.title).join("、")}；各参考表仅用于组织任务与解释证据，本站统一分数不替代原表正式计分。`);
+  }
   const assignedModules = professionalModuleProfiles.map((profile) => {
     const assessor = professionalAssessor(data, profile.id);
     if (!assessor.evaluator) return "";
@@ -443,6 +530,8 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   if (feedingSafety?.itemScores.some((item) => item.score !== null && item.score <= 2)) alerts.push("进食与吞咽风险筛查存在低等级项目。开展食物或液体训练前，应核对呛咳、湿嗓、呼吸改变、反复感染和营养风险，并由具备相应资质的专业人员决定是否需要完整吞咽评估。");
   const movementSafetyRows = rows.filter((row) => ["ptEndurance", "ptEquipmentAccess", "ptTransfers"].includes(row.id));
   if (movementSafetyRows.some((row) => row.itemScores.some((item) => item.score !== null && item.score <= 2))) alerts.push("运动功能记录提示较高支持需要。实施转移、耐力或辅具活动前，应核对疼痛、心肺反应、皮肤情况、设备匹配和照护者操作安全。");
+  if (rows.some((row) => row.id.startsWith("ptGmfm") && row.answered > 0)) alerts.push("GMFM结构参考领域使用本站统一1至5级评分，不能转换为正式GMFM-88维度百分比、总分或疗效结论；需要正式结果时应按原表完整施测与计分。");
+  if (rows.some((row) => row.id === "stLanguageDevelopmentStage" && row.answered > 0)) alerts.push("语言发展阶段仅提供S-S法结构线索。正式阶段、症状分类和诊断结论应由具备相应能力的言语语言专业人员依据原表流程确认。");
   alerts.push("本结果来自功能性观察，不是标准化常模量表，不能单独用于医学诊断、教育安置或服务资格判定。");
 
   if (!strengths.length) strengths.push("完成更多领域后，将显示学生较稳定的能力和可利用的支持资源。");
@@ -450,7 +539,7 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
   if (!goals.length) goals.push("完成至少3个领域后，系统将根据当前能力、参与影响和支持等级生成8周阶段目标。");
 
   return {
-    methodVersion: "multidisciplinary-functional-v6",
+    methodVersion: "multidisciplinary-functional-v7-scale-informed",
     average,
     coverage,
     answeredItems,
@@ -470,6 +559,8 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
     courseRecommendationNotes: courseDecision.notes,
     moduleReadiness: courseDecision.moduleReadiness,
     moduleSummaries,
+    professionalFindings,
+    referenceSummaries,
     priorities: focusRows,
     domainScores: Object.fromEntries(validRows.map((row) => [row.id, {
       title: row.title,
@@ -478,7 +569,15 @@ export function analyzeAssessment(data, { domains, scoreLevels, impactLabels }) 
       impact: row.impact,
       answered: row.answered,
       support: row.support || "部分提示",
-      priority: Number(row.priority.toFixed(2))
+      priority: Number(row.priority.toFixed(2)),
+      assessmentMethod: row.assessmentMethod || "多情境功能性观察",
+      scoringNote: row.scoringNote || "",
+      referenceTitles: list(row.references).map((reference) => reference.title),
+      evidenceItems: row.itemScores
+        .filter((item) => item.score !== null)
+        .sort((left, right) => left.score - right.score)
+        .slice(0, 3)
+        .map((item) => ({ label: item.label, score: item.score }))
     }]))
   };
 }
