@@ -2,6 +2,7 @@ const REPORT_WIDTH = 9360;
 const TABLE_INDENT = 120;
 const FONT_LATIN = "Arial";
 const FONT_CJK = "Noto Sans SC Thin";
+const DEFAULT_ORGANIZATION_NAME = "东莞市康复实验学校";
 const COLORS = {
   ink: "1F2A33",
   soft: "53616C",
@@ -113,7 +114,7 @@ export function buildAssessmentReportDocument(row, api, fontData = null) {
   const record = row?.assessment || {};
   const analysis = row?.analysis || {};
   const title = row?.student_label || record.studentName || record.studentCode || "评估记录";
-  const organizationName = valueOr(record.organizationName, "知衡学生功能评估与康复支持");
+  const organizationName = valueOr(record.organizationName, DEFAULT_ORGANIZATION_NAME);
   const documentNumber = reportNumber(row, record);
   const privacyMode = row?.identity_scope === "restricted_roster"
     ? "团队受限名单关联记录"
@@ -638,7 +639,7 @@ export function buildStudentProgressDocument(profile, api, fontData = null) {
   const assessments = Array.isArray(profile?.assessments) ? profile.assessments : [];
   const assessmentPoints = Array.isArray(profile?.assessmentPoints) ? profile.assessmentPoints : [];
   const reminders = Array.isArray(profile?.reminders) ? profile.reminders : [];
-  const organizationName = valueOr(record.organizationName, "知衡特殊教育康复评估");
+  const organizationName = valueOr(record.organizationName, DEFAULT_ORGANIZATION_NAME);
   const generatedDate = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   const documentNumber = `CR-${generatedDate.slice(2)}-${String(student.student_code || "STUDENT").replace(/[^A-Za-z0-9]/g, "").slice(-5).toUpperCase()}`;
   const font = { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_CJK, cs: FONT_CJK, hint: "eastAsia" };

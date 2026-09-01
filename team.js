@@ -12,6 +12,7 @@ const API_ORIGIN = location.hostname === "sensory-assessment-site.pages.dev" || 
   ? ""
   : PRODUCTION_ORIGIN;
 const TEAM_RECORD_TRANSFER_KEY = "sensoryTeamOpenRecord.v1";
+const DEFAULT_ORGANIZATION_NAME = "东莞市康复实验学校";
 
 if (location.protocol === "file:" || location.hostname === "jintang6.github.io") {
   location.replace(`${PRODUCTION_ORIGIN}/team.html${location.search}`);
@@ -578,7 +579,7 @@ async function startRosterAssessment(studentId) {
       studentName: student.student_name,
       studentCode: student.student_code,
       className: student.class_name,
-      organizationName: summary.team.name,
+      organizationName: DEFAULT_ORGANIZATION_NAME,
       assessmentDate: new Date().toISOString().slice(0, 10),
       domains: {}
     };
@@ -589,8 +590,7 @@ async function startRosterAssessment(studentId) {
         id: existing.client_record_id,
         studentName: student.student_name,
         studentCode: student.student_code,
-        className: student.class_name,
-        organizationName: summary.team.name
+        className: student.class_name
       };
     }
     sessionStorage.setItem(TEAM_RECORD_TRANSFER_KEY, JSON.stringify(record));
@@ -645,7 +645,6 @@ function openRecordInAssessment() {
     id: currentRecord.client_record_id,
     studentName: currentRecord.student_name || currentRecord.assessment.studentName || "",
     className: currentRecord.class_name || currentRecord.assessment.className || "",
-    organizationName: summary?.team?.name || "",
     evaluator: "",
     reviewer: "",
     background: "",

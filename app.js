@@ -12,6 +12,7 @@ const AUTO_SAVE_DELAY = 650;
 const AUTO_SYNC_IDLE_DELAY = 4_000;
 const MIN_CLOUD_SYNC_INTERVAL = 30_000;
 const ASSESSMENT_CATALOG_VERSION = 7;
+const DEFAULT_ORGANIZATION_NAME = "东莞市康复实验学校";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const IS_WECHAT = /MicroMessenger/i.test(navigator.userAgent);
 const API_ORIGIN = location.hostname === "sensory-assessment-site.pages.dev" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
@@ -573,7 +574,7 @@ function applyData(data = {}) {
   setField("gender", data.gender || "");
   setField("age", data.age || "");
   setField("className", data.className || "");
-  setField("organizationName", data.organizationName || "");
+  setField("organizationName", data.organizationName || DEFAULT_ORGANIZATION_NAME);
   setField("primaryNeed", data.primaryNeed || "全面发育迟缓/智力障碍");
   setField("assessmentDate", data.assessmentDate || today());
   setField("evaluator", data.evaluator || "");
@@ -935,7 +936,7 @@ async function syncRecord(data, analysis, { silent = false, signature = syncSign
 
 function newRecord() {
   activeId = null;
-  applyData({ assessmentDate: today(), domains: {} });
+  applyData({ assessmentDate: today(), organizationName: DEFAULT_ORGANIZATION_NAME, domains: {} });
   showToast("已开始新的空白评估。 ");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1040,7 +1041,7 @@ function buildReportHtml(record) {
   `).join("");
   const referenceLines = (result.referenceSummaries || []).map((reference) => `${reference.title}：${reference.application}${reference.scoring}`);
   const titleName = record.studentName || record.studentCode || "学生";
-  const organizationName = record.organizationName || "知衡学生功能评估与康复支持";
+  const organizationName = record.organizationName || DEFAULT_ORGANIZATION_NAME;
   const htmlReportNumber = `ZH-FR-${String(record.assessmentDate || today()).replaceAll("-", "")}-${String(record.studentCode || "REPORT").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "REPORT"}`;
 
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(titleName)}-学生功能评估与康复支持报告</title>
@@ -1750,7 +1751,11 @@ async function init() {
   const transferredRecord = takeTeamRecordTransfer();
   const shouldStartNew = new URLSearchParams(location.search).get("new") === "1";
   const draft = shouldStartNew ? null : loadDraft();
-  applyData(transferredRecord || draft || { assessmentDate: today(), domains: {} });
+  applyData(transferredRecord || draft || {
+    assessmentDate: today(),
+    organizationName: DEFAULT_ORGANIZATION_NAME,
+    domains: {}
+  });
   if (transferredRecord) showToast(`已从团队空间载入 ${transferredRecord.studentCode} 的去标识化档案。`);
   if (records.some((record) => record.migratedFrom === "v1")) showToast("旧版评估档案已自动迁移到新版结构。 ");
   document.body.classList.remove("auth-pending");

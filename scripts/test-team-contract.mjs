@@ -127,6 +127,7 @@ assert(api.includes('"goal.update"'), "goal changes must be audited");
 assert(api.includes('"intervention.delete"'), "intervention deletions must be audited");
 
 assert(!index.includes('value="full"'), "the full-record sync option must not return to the assessment UI");
+assert(index.includes('name="organizationName" value="东莞市康复实验学校"'), "new assessments must show the configured school name by default");
 assert(index.includes('id="appDrawer"') && index.includes('id="feedbackDialog"'), "account navigation drawer or feedback dialog is missing");
 assert(index.includes('id="drawerAdminLink"'), "super-administrator drawer data-backend entry is missing");
 assert(!index.includes('id="headerAdminLink"'), "homepage toolbar must not expose a separate data-backend button");
@@ -135,6 +136,8 @@ assert(app.includes('/api/team/assessments'), "assessment sync must target the a
 assert(app.includes("module: activeModulePage"), "assessment sync must identify the current professional module");
 assert(app.includes("signedInEvaluator") && app.includes("teamSession?.user?.displayName"), "the evaluator must be filled from the login session");
 assert(app.includes("cloudSettings.enabled = true"), "cloud backup must default to enabled after login");
+assert(app.includes('const DEFAULT_ORGANIZATION_NAME = "东莞市康复实验学校"'), "assessment defaults and HTML reports must use the configured school name");
+assert(app.includes('setField("organizationName", data.organizationName || DEFAULT_ORGANIZATION_NAME)'), "blank legacy drafts must receive the configured school name");
 assert(app.includes("scopedStorageKey"), "local drafts must be isolated by signed-in account");
 assert(app.includes('credentials: "include"'), "team requests must send the secure session cookie");
 assert(index.includes('data-module-link="ot"') && index.includes('data-module-link="st"') && index.includes('data-module-link="pt"'), "four professional assessment entry links are missing");
@@ -146,6 +149,7 @@ assert(team.includes('id="passwordResetDialog"'), "administrator password reset 
 assert(team.includes('id="teamDrawer"') && team.includes('id="teamMenuBtn"'), "team workbench brand drawer is missing");
 assert(team.includes('id="teamDrawerAdminLink" hidden'), "team data-backend entry must be hidden by default");
 assert(teamJs.includes('user?.isSuperAdmin !== true') && teamJs.includes("openTeamDrawer"), "team drawer must reveal the data backend only to the super administrator");
+assert(teamJs.includes('const DEFAULT_ORGANIZATION_NAME = "东莞市康复实验学校"'), "roster-created assessments must use the configured school name");
 assert(team.includes('id="openTeamTrashBtn"') && team.includes('id="teamTrashDialog"'), "team administrators need a visible assessment recycle bin");
 assert(team.includes('data-team-panel="feedback"'), "administrator feedback inbox is missing");
 assert(team.includes('id="registerInviteCode"'), "invitation code registration field is missing");
@@ -167,6 +171,7 @@ assert(teamJs.includes("studentProgressFilename"), "student stage report export 
 assert(teamJs.includes("deleteRecordFromTable") && teamJs.includes("handleTeamTrashAction"), "team assessment delete and restore controls are missing");
 assert(reportDocx.includes("buildStudentProgressDocument"), "student stage DOCX generator is missing");
 assert(reportDocx.includes("学生功能评估与康复支持报告"), "integrated multidisciplinary DOCX title is missing");
+assert(reportDocx.includes('const DEFAULT_ORGANIZATION_NAME = "东莞市康复实验学校"'), "DOCX reports must fall back to the configured school name");
 assert(middleware.includes("password_change_required") && middleware.includes("module_access"), "assessment pages must be gated by login, password and module permissions");
 assert(routes.includes('"/index.html"') && routes.includes('"/ot/*"') && routes.includes('"/movement/*"'), "Cloudflare routes must apply the assessment login middleware");
 
